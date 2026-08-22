@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
-      "identifier": "keel-mcp",
+      "identifier": "keel-pentest",
       "version": "0.1.0",
       "runtimeHint": "python",
       "transport": {

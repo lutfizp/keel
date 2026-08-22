@@ -152,4 +152,4 @@ Policy, scheduler, adapters, parsers, store, triage, and proof live in separate 
 
 ## PyPI and MCP Registry
 
-PyPI package name is `keel-mcp`. Registry name is `io.github.lutfizp/keel`. Publish steps: [PUBLISH.md](PUBLISH.md).
+PyPI package name is `keel-pentest`. Registry name is `io.github.lutfizp/keel`. Publish steps: [PUBLISH.md](PUBLISH.md).
