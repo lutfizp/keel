@@ -9,6 +9,7 @@
 <!-- mcp-name: io.github.lutfizp/keel -->
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-stdio-purple.svg)](https://modelcontextprotocol.io/)
 [![PyPI](https://img.shields.io/badge/PyPI-keel--pentest-orange.svg)](https://pypi.org/project/keel-pentest/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-io.github.lutfizp%2Fkeel-informational.svg)](https://github.com/lutfizp/keel)
@@ -16,7 +17,7 @@
 
 **Nine MCP tools. One wave at a time. Per-host rate limits. Hunter-grade cards, not scanner dumps.**
 
-[Architecture](#architecture-overview) · [Installation](#installation) · [MCP clients](#mcp-client-setup) · [Features](#features) · [Tools](#mcp-tools) · [Prompts](#example-prompts) · [Security](#security-considerations)
+[Architecture](#architecture-overview) · [Installation](#installation) · [MCP clients](#mcp-client-setup) · [Features](#features) · [Tools](#mcp-tools) · [Prompts](#example-prompts) · [Security](#security-considerations) · [License](#license)
 
 </div>
 
@@ -95,7 +96,84 @@ graph TD
 
 ## Installation
 
-### One command
+Python **3.10+** is required. The `mcp` package has no 3.9 wheels. Do **not** use Apple `/usr/bin/python3` when it reports 3.9 (`No matching distribution found for mcp>=1.9`).
+
+Pick one path:
+
+| Path | When to use | MCP command |
+|------|-------------|-------------|
+| [PyPI](#from-pypi) | You want the released package, no git clone | `keel-pentest` or `python -m keel` |
+| [Local clone](#from-a-local-clone) | Develop, or use the in-repo launcher and configs | `python3 scripts/keel_mcp.py` |
+| [Editable install](#editable-install-from-source) | Hack on `src/keel` with pip pointing at this repo | same as local, or `python -m keel` inside the venv |
+| [MCP Registry](#from-the-mcp-registry) | Client can install `io.github.lutfizp/keel` | whatever the client writes (usually the PyPI entry) |
+
+Every path still needs the **probe CLIs** on `PATH` (`httpx` and `nuclei`). PyPI does not ship those binaries.
+
+### Probe binaries
+
+| Binary | Role |
+|--------|------|
+| ProjectDiscovery `httpx` | Alive / HTTP probe (`probe_alive`) |
+| ProjectDiscovery `nuclei` | Template scan (`template_scan`) |
+
+The Python library `httpx` is a Keel dependency. It is **not** the CLI.
+
+macOS: `brew install nuclei httpx` then `nuclei -update-templates`. Other OS: [INSTALL.md](INSTALL.md), or after a clone `sh scripts/bootstrap.sh tools`.
+
+### From PyPI
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install keel-pentest
+```
+
+With [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv pip install keel-pentest
+```
+
+Check:
+
+```bash
+python -c "import keel; print('keel ok')"
+which keel-pentest
+```
+
+Do not leave `python -m keel` running in the terminal to “test” it: that process is the MCP stdio server and waits on stdin. Use it only as the client `command`.
+
+`python -m keel` and the console script `keel-pentest` both start the **stdio MCP server** (they sit on stdin/stdout; they are not an HTTP daemon). Point the MCP client at the interpreter that has the package:
+
+```json
+{
+  "mcpServers": {
+    "keel": {
+      "command": "/ABS/path/to/.venv/bin/keel-pentest"
+    }
+  }
+}
+```
+
+Or:
+
+```json
+{
+  "mcpServers": {
+    "keel": {
+      "command": "/ABS/path/to/.venv/bin/python",
+      "args": ["-m", "keel"]
+    }
+  }
+}
+```
+
+Set `PYTHONUNBUFFERED=1` in the client env if JSON-RPC looks stalled. Install `httpx` and `nuclei` separately (see above).
+
+Package name on PyPI is **`keel-pentest`**. Import name is **`keel`**.
+
+### From a local clone
 
 ```bash
 git clone https://github.com/lutfizp/keel.git
@@ -109,9 +187,7 @@ Windows:
 powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 ```
 
-The script creates `.venv` with Python **3.10+**, installs Keel, then installs ProjectDiscovery `httpx` and `nuclei`.
-
-Do **not** create the venv with Apple `/usr/bin/python3` when it is 3.9. The `mcp` package has no 3.9 wheels (`No matching distribution found for mcp>=1.9`).
+The script creates `.venv` with Python 3.10+, installs Keel in that venv, then installs ProjectDiscovery `httpx` and `nuclei`.
 
 Partial runs:
 
@@ -120,18 +196,7 @@ sh scripts/bootstrap.sh python   # venv + Keel only
 sh scripts/bootstrap.sh tools    # nuclei + httpx only
 ```
 
-OS-specific steps: [INSTALL.md](INSTALL.md).
-
-### Probe binaries
-
-| Binary | Role |
-|--------|------|
-| ProjectDiscovery `httpx` | Alive / HTTP probe (`probe_alive`) |
-| ProjectDiscovery `nuclei` | Template scan (`template_scan`) |
-
-The Python library `httpx` is a Keel dependency. It is **not** the CLI.
-
-### Verify
+Verify:
 
 ```bash
 source .venv/bin/activate
@@ -140,21 +205,41 @@ httpx -version
 nuclei -version
 ```
 
-OpenCode, Cursor, and the other in-repo configs use:
+In-repo MCP configs use the launcher:
 
 ```text
 python3 scripts/keel_mcp.py
 ```
 
-The launcher selects a 3.10+ `.venv`. Optional: `KEEL_PYTHON`, `KEEL_ROOT`. Set `PYTHONUNBUFFERED=1` so JSON-RPC is not buffered.
+That script finds a 3.10+ `.venv` next to the repo and runs `python -m keel`. Optional env: `KEEL_PYTHON` (interpreter), `KEEL_ROOT` (directory that contains `.venv`).
 
-PyPI: `pip install keel-pentest` then `keel-pentest` or `python -m keel`. Registry name: `io.github.lutfizp/keel`.
+### Editable install from source
+
+From the clone (after a 3.10+ venv exists):
+
+```bash
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+pytest
+```
+
+Same MCP command as local: `python3 scripts/keel_mcp.py`, or `/path/to/keel/.venv/bin/python -m keel`.
+
+### From the MCP Registry
+
+Registry name: **`io.github.lutfizp/keel`**. The published `server.json` points at PyPI **`keel-pentest`**. Clients that speak the registry will install that package; you still need Python 3.10+ and the probe CLIs.
+
+If the client only writes a config file, use the PyPI `command` examples above.
+
+OS-specific Python and tool install: [INSTALL.md](INSTALL.md).
 
 ---
 
 ## MCP client setup
 
-This repo already includes project configs when **keel** is the workspace root:
+### Local clone (this repo as workspace)
+
+Configs already in the tree:
 
 | Host | File |
 |------|------|
@@ -166,7 +251,7 @@ This repo already includes project configs when **keel** is the workspace root:
 
 Snippets for Claude Desktop, Hermes, Gemini CLI, Antigravity (`agy`), Windsurf, Cline, Roo: [clients/README.md](clients/README.md).
 
-### OpenCode
+OpenCode:
 
 ```json
 {
@@ -183,14 +268,14 @@ Snippets for Claude Desktop, Hermes, Gemini CLI, Antigravity (`agy`), Windsurf, 
 
 OpenCode v2 uses `mcp.servers` instead of a flat `mcp` map. Keep the same `command` array.
 
-### Claude Code
+Claude Code (from the clone):
 
 ```bash
 cd /path/to/keel
 claude mcp add --scope project --transport stdio keel -- python3 scripts/keel_mcp.py
 ```
 
-### Claude Desktop / Cursor-style `mcpServers`
+Claude Desktop / Cursor-style `mcpServers` (local launcher):
 
 ```json
 {
@@ -203,13 +288,29 @@ claude mcp add --scope project --transport stdio keel -- python3 scripts/keel_mc
 }
 ```
 
-### Codex
+Codex (local):
 
 ```bash
 codex mcp add keel -- python3 /ABS/path/to/keel/scripts/keel_mcp.py
 ```
 
-Restart the client after bootstrap.
+### PyPI / global venv
+
+Claude Code:
+
+```bash
+claude mcp add --scope user --transport stdio keel -- /ABS/path/to/.venv/bin/keel-pentest
+```
+
+Codex:
+
+```bash
+codex mcp add keel -- /ABS/path/to/.venv/bin/python -m keel
+```
+
+Use absolute paths. A client that inherits a random `python3` (especially macOS 3.9) will fail to import `mcp`.
+
+Restart the client after install.
 
 ---
 
@@ -364,14 +465,15 @@ engagement_health for bb-2026-01. If unknown, engagement_health with no id.
 
 **MCP server failed / import errors**
 
-Use Python 3.10+ and the launcher, not Apple 3.9:
+Use Python 3.10+ (venv that actually has `keel-pentest` or the clone install), not Apple 3.9:
 
 ```bash
 python3 --version
-python3 scripts/keel_mcp.py
+python3 -m keel          # PyPI / venv
+python3 scripts/keel_mcp.py   # local clone
 ```
 
-If `mcp>=1.9` cannot install, recreate `.venv` with 3.12/3.11/3.10 (`sh scripts/bootstrap.sh python`).
+If `mcp>=1.9` cannot install, recreate `.venv` with 3.12/3.11/3.10 (`sh scripts/bootstrap.sh python` or a fresh venv then `pip install keel-pentest`).
 
 **httpx / nuclei not found**
 
@@ -422,10 +524,10 @@ Useful areas: parsers, triage, additional **allowlisted** proof playbooks, clien
 
 ---
 
-## License and author
+## License
 
-Package: **keel-pentest** on PyPI. MCP: **io.github.lutfizp/keel**.
+Keel is released under the **MIT License**. See [LICENSE](LICENSE).
 
-[Lutfi Z.P.](https://github.com/lutfizp) — [github.com/lutfizp/keel](https://github.com/lutfizp/keel)
+Copyright (c) 2026 [Lutfi Z.P.](https://github.com/lutfizp)
 
-If you add a `LICENSE` file to this repo, link it here.
+PyPI: **keel-pentest**. MCP Registry: **io.github.lutfizp/keel**. Source: [github.com/lutfizp/keel](https://github.com/lutfizp/keel).
