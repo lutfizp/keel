@@ -1,128 +1,191 @@
-# Install Keel and probe tools
+# Install
 
-Keel needs **Python 3.10 or newer**. The `mcp` package is not published for Apple’s Command Line Tools `python3` (often 3.9). That is why `pip install -e ".[dev]"` reports `No matching distribution found for mcp>=1.9`.
+Names (easy to mix up):
 
-Integrated binaries (used by `execute_wave`):
+| Role | Name |
+|------|------|
+| pip / PyPI project | `keel-pentest` |
+| Console script (MCP stdio) | `keel-pentest` |
+| Import / `python -m` | `keel` |
+| MCP client server id | `keel` |
+| MCP Registry | `io.github.lutfizp/keel` |
+| GitHub repo | `https://github.com/lutfizp/keel` |
 
-| Binary | Purpose |
-|--------|---------|
-| ProjectDiscovery `httpx` | Alive / HTTP probe |
-| ProjectDiscovery `nuclei` | Template scan |
+Do **not** run `pip install keel`. That is a different project. Install **`keel-pentest`**.
 
-The Python library `httpx` is a dependency of Keel and is **not** the same as the `httpx` CLI.
+Python **3.10+**. Apple `/usr/bin/python3` is often 3.9; `mcp` has no 3.9 wheels (`No matching distribution found for mcp>=1.9`).
 
-## One command (recommended)
+`execute_wave` shells ProjectDiscovery **`httpx`** and **`nuclei`**. Those CLIs are not on PyPI. The Python library `httpx` (a dependency of `keel-pentest`) is not the CLI.
 
-From the `keel` directory:
+---
 
-**macOS / Linux**
+## Path A — PyPI (no git clone)
 
 ```bash
+python3.12 -m venv .venv
+source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install keel-pentest
+```
+
+[uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install keel-pentest
+```
+
+[pipx](https://pipx.pypa.io/) (global `keel-pentest` on PATH):
+
+```bash
+pipx install keel-pentest
+```
+
+Check:
+
+```bash
+python -c "import keel; print('ok')"
+command -v keel-pentest || where keel-pentest
+```
+
+Do not run `keel-pentest` or `python -m keel` in a normal terminal to “try it”. Both are the MCP stdio server and wait on stdin. Point the client at them.
+
+MCP command (use the **absolute** path from `command -v keel-pentest`):
+
+```json
+{
+  "mcpServers": {
+    "keel": {
+      "command": "/ABS/path/to/.venv/bin/keel-pentest",
+      "env": { "PYTHONUNBUFFERED": "1" }
+    }
+  }
+}
+```
+
+Equivalent:
+
+```json
+{
+  "mcpServers": {
+    "keel": {
+      "command": "/ABS/path/to/.venv/bin/python",
+      "args": ["-m", "keel"],
+      "env": { "PYTHONUNBUFFERED": "1" }
+    }
+  }
+}
+```
+
+Then install probe CLIs ([below](#probe-clis-required-for-every-path)). Snippets: [clients/README.md](clients/README.md).
+
+---
+
+## Path B — Local clone (launcher + in-repo MCP configs)
+
+```bash
+git clone https://github.com/lutfizp/keel.git
+cd keel
 sh scripts/bootstrap.sh
 ```
 
-**Windows (PowerShell)**
+Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 ```
 
-The script detects the OS, prefers Python 3.12/3.11/3.10, creates `.venv`, upgrades pip, installs Keel, then installs `httpx` and `nuclei` (Homebrew on macOS, `go install` if Go is present, otherwise GitHub release archives into `~/.keel/bin`).
-
-Partial runs:
+Bootstrap creates `.venv`, runs `pip install -e ".[dev]"` (still the **`keel-pentest`** project from `pyproject.toml`), then installs `httpx` and `nuclei`.
 
 ```bash
-sh scripts/bootstrap.sh python   # venv + Keel only
+sh scripts/bootstrap.sh python   # venv + package only
 sh scripts/bootstrap.sh tools    # nuclei + httpx only
 ```
 
-## macOS
+MCP command:
 
-1. Install Homebrew if needed: https://brew.sh
-2. Install a current Python (do not use `/usr/bin/python3` if it is 3.9):
-
-```bash
-brew install python@3.12
+```text
+python3 scripts/keel_mcp.py
 ```
 
-3. From `keel`:
+The launcher finds `.venv` with Python 3.10+ and execs `python -m keel`. Env: `KEEL_PYTHON`, `KEEL_ROOT`.
+
+Configs already in the repo: `opencode.json`, `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.codex/config.toml`.
+
+Editable without bootstrap (after you created a 3.10+ venv yourself):
 
 ```bash
-/opt/homebrew/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
-On Intel Macs, Python may live at `/usr/local/bin/python3.12`.
+That is the same distribution as PyPI (`name = "keel-pentest"`). After install you also get `.venv/bin/keel-pentest`.
 
-4. Probe tools:
+---
+
+## Probe CLIs (required for every path)
+
+| Binary | Wave |
+|--------|------|
+| ProjectDiscovery `httpx` | `probe_alive` |
+| ProjectDiscovery `nuclei` | `template_scan` |
+
+**macOS**
 
 ```bash
-brew install nuclei httpx
+brew install python@3.12 nuclei httpx
 nuclei -update-templates
 ```
 
-Or:
-
-```bash
-sh scripts/bootstrap.sh
-```
-
-5. Point OpenCode at `.venv/bin/python` as in `opencode.json.example`.
-
-## Ubuntu / Debian
+**Ubuntu / Debian** (package + tools via Go or bootstrap)
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3.12 python3.12-venv python3-pip golang-go unzip
-cd keel
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-sh scripts/bootstrap.sh tools
+python -m pip install keel-pentest
+# clone only:
+# git clone ... && cd keel && sh scripts/bootstrap.sh tools
 ```
 
-If `python3.12` is missing, enable the deadsnakes PPA or use [pyenv](https://github.com/pyenv/pyenv). Add `~/go/bin` or `~/.keel/bin` to `PATH`.
+If you cloned: `sh scripts/bootstrap.sh tools` (Homebrew, `go install`, or GitHub archives into `~/.keel/bin`). Put `~/go/bin` and `~/.keel/bin` on `PATH`.
 
-## Fedora / RHEL
+**Fedora / RHEL**
 
 ```bash
 sudo dnf install -y python3.12 golang unzip
-cd keel
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-sh scripts/bootstrap.sh tools
+python -m pip install keel-pentest
 ```
 
-## Windows
+**Windows**
 
-1. Install [Python 3.12](https://www.python.org/downloads/) and tick **Add python.exe to PATH**.
-2. Open a **new** PowerShell:
+1. [Python 3.12](https://www.python.org/downloads/) with **Add python.exe to PATH**.
+2. New PowerShell:
 
 ```powershell
-cd path\to\keel
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -e ".[dev]"
-powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 tools
+python -m pip install keel-pentest
 ```
 
-Install Go from https://go.dev if GitHub fallback is not enough, then reopen the terminal so `go` is on `PATH`.
+From a clone, tools: `powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1 tools`. Add `%USERPROFILE%\.keel\bin` and `%USERPROFILE%\go\bin` to PATH.
 
-Add `%USERPROFILE%\.keel\bin` and `%USERPROFILE%\go\bin` to the user PATH.
+---
 
 ## Check
 
 ```bash
 source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
 python -c "import mcp, keel; print('keel ok')"
+python -c "import importlib.metadata as m; print(m.version('keel-pentest'))"
 httpx -version
 nuclei -version
 ```
 
-Then copy `opencode.json`. Use `python3 scripts/keel_mcp.py`. The launcher selects the 3.10+ `.venv` automatically.
+MCP Registry clients install identifier **`keel-pentest`** from PyPI (see `server.json`). You still need Python 3.10+ and the probe CLIs.

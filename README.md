@@ -86,7 +86,7 @@ graph TD
 
 ### How it works
 
-1. **Connect** — the client starts `python3 scripts/keel_mcp.py` (stdio). No separate HTTP sidecar.
+1. **Connect** — the client starts the stdio server: **`keel-pentest`** (PyPI) or `python3 scripts/keel_mcp.py` (clone). No HTTP sidecar.
 2. **Begin** — `begin_engagement` records scope, RPS, and whether proofs are allowed.
 3. **Draft then run** — `draft_waves` proposes `probe_alive` then `template_scan`. `execute_wave` runs **one** admitted wave behind the per-host bucket.
 4. **Triage** — `query_cards` returns hunter-relevant cards. `state_impact` records `impact_class`. `second_look` rescans one URL.
@@ -96,44 +96,41 @@ graph TD
 
 ## Installation
 
-Python **3.10+** is required. The `mcp` package has no 3.9 wheels. Do **not** use Apple `/usr/bin/python3` when it reports 3.9 (`No matching distribution found for mcp>=1.9`).
+| Role | Name |
+|------|------|
+| pip / PyPI | **`keel-pentest`** |
+| MCP stdio command | **`keel-pentest`** |
+| `import` / `python -m` | **`keel`** |
+| MCP server id in clients | `keel` |
+| Registry | `io.github.lutfizp/keel` |
+
+Do **not** `pip install keel`. Full OS notes: [INSTALL.md](INSTALL.md). Client snippets (PyPI and clone): [clients/README.md](clients/README.md).
+
+Python **3.10+**. Apple `/usr/bin/python3` is often 3.9 (`No matching distribution found for mcp>=1.9`).
 
 Pick one path:
 
 | Path | When to use | MCP command |
 |------|-------------|-------------|
-| [PyPI](#from-pypi) | You want the released package, no git clone | `keel-pentest` or `python -m keel` |
-| [Local clone](#from-a-local-clone) | Develop, or use the in-repo launcher and configs | `python3 scripts/keel_mcp.py` |
-| [Editable install](#editable-install-from-source) | Hack on `src/keel` with pip pointing at this repo | same as local, or `python -m keel` inside the venv |
-| [MCP Registry](#from-the-mcp-registry) | Client can install `io.github.lutfizp/keel` | whatever the client writes (usually the PyPI entry) |
+| [PyPI](#from-pypi) | Released package, no clone | absolute path to `keel-pentest`, or `python -m keel` in that venv |
+| [Local clone](#from-a-local-clone) | Develop; in-repo MCP configs | `python3 scripts/keel_mcp.py` |
+| [Editable install](#editable-install-from-source) | Hack on `src/keel` | launcher, or `.venv/bin/keel-pentest` |
+| [MCP Registry](#from-the-mcp-registry) | Client installs `io.github.lutfizp/keel` | same as PyPI (`keel-pentest` from the registry package) |
 
-Every path still needs the **probe CLIs** on `PATH` (`httpx` and `nuclei`). PyPI does not ship those binaries.
+Every path still needs ProjectDiscovery **`httpx`** and **`nuclei`** on `PATH`. The wheel does not include those binaries. The Python library `httpx` is not the CLI.
 
-### Probe binaries
-
-| Binary | Role |
-|--------|------|
-| ProjectDiscovery `httpx` | Alive / HTTP probe (`probe_alive`) |
-| ProjectDiscovery `nuclei` | Template scan (`template_scan`) |
-
-The Python library `httpx` is a Keel dependency. It is **not** the CLI.
-
-macOS: `brew install nuclei httpx` then `nuclei -update-templates`. Other OS: [INSTALL.md](INSTALL.md), or after a clone `sh scripts/bootstrap.sh tools`.
+macOS probes: `brew install nuclei httpx` then `nuclei -update-templates`. Clone: `sh scripts/bootstrap.sh tools`. Other OS: [INSTALL.md](INSTALL.md).
 
 ### From PyPI
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install keel-pentest
 ```
 
-With [uv](https://docs.astral.sh/uv/):
-
-```bash
-uv pip install keel-pentest
-```
+[uv](https://docs.astral.sh/uv/): `uv pip install keel-pentest`. [pipx](https://pipx.pypa.io/): `pipx install keel-pentest` (puts `keel-pentest` on PATH).
 
 Check:
 
@@ -187,7 +184,7 @@ Windows:
 powershell -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
 ```
 
-The script creates `.venv` with Python 3.10+, installs Keel in that venv, then installs ProjectDiscovery `httpx` and `nuclei`.
+The script creates `.venv` with Python 3.10+, installs this project (`keel-pentest` via `pip install -e ".[dev]"`), then installs ProjectDiscovery `httpx` and `nuclei`.
 
 Partial runs:
 
@@ -211,7 +208,7 @@ In-repo MCP configs use the launcher:
 python3 scripts/keel_mcp.py
 ```
 
-That script finds a 3.10+ `.venv` next to the repo and runs `python -m keel`. Optional env: `KEEL_PYTHON` (interpreter), `KEEL_ROOT` (directory that contains `.venv`).
+That script finds a 3.10+ `.venv` next to the repo and runs `python -m keel` (same as `keel-pentest`). Optional env: `KEEL_PYTHON`, `KEEL_ROOT`.
 
 ### Editable install from source
 
@@ -223,7 +220,7 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
-Same MCP command as local: `python3 scripts/keel_mcp.py`, or `/path/to/keel/.venv/bin/python -m keel`.
+Same as local: `python3 scripts/keel_mcp.py`, or `/path/to/keel/.venv/bin/keel-pentest`.
 
 ### From the MCP Registry
 
@@ -308,7 +305,9 @@ Codex:
 codex mcp add keel -- /ABS/path/to/.venv/bin/python -m keel
 ```
 
-Use absolute paths. A client that inherits a random `python3` (especially macOS 3.9) will fail to import `mcp`.
+OpenCode (PyPI): `"command": ["/ABS/path/to/.venv/bin/keel-pentest"]`. Example: `opencode.pypi.json.example`.
+
+Use **absolute** paths to `keel-pentest` or the venv `python`. A client that inherits Apple `python3` 3.9 will fail to import `mcp`.
 
 Restart the client after install.
 
