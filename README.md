@@ -2,7 +2,7 @@
 
 <img src="assets/logo.png" alt="Keel" width="520"/>
 
-# Keel
+# 
 
 ### MCP control plane for authorized pentest and bug bounty
 
