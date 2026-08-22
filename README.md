@@ -2,9 +2,17 @@
 
 <!-- mcp-name: io.github.lutfizp/keel -->
 
-Keel is a small control plane MCP server. It exposes nine tools. It does not wrap HexStrike and does not put scanner binaries on the model.
+**Keel is the MCP control plane for authorized pentests and bug bounty.** Plug it into Claude Code, Codex, Cursor, OpenCode, Hermes, Copilot, and any other MCP client. Keel runs scoped recon, keeps the target from getting hammered, and turns scanner noise into hunter-grade findings.
 
-The agent plans waves. Keel enforces scope, a per-host token bucket, finding merge, hunter triage, and bounded proofs on researcher test accounts.
+**one wave at a time**, **per-host rate limits**, **deduplicated cards**, and a **triage layer** that hides missing-header junk so you spend time on issues that actually pay. When you need proof for a report, bounded playbooks use **your tester accounts** and a unique marker — capability.
+
+Use it for:
+
+- External and web pentest recon
+- Bug bounty (scope in, noise out)
+- Red-team style assessment with an AI copilot
+- Repeatable engagements you can pause, query, and prove
+
 
 ## Install
 

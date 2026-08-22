@@ -1,6 +1,6 @@
 # Connect Keel to any MCP client
 
-Keel is a **stdio MCP server**. Clone **https://github.com/lutfizp/keel** and spawn:
+Keel is a **stdio MCP server** for pentest and bug bounty copilots. Clone **https://github.com/lutfizp/keel** and spawn:
 
 ```text
 python3 scripts/keel_mcp.py
