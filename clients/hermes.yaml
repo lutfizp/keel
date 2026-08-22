@@ -1,0 +1,7 @@
+mcp_servers:
+  keel:
+    command: python3
+    args:
+      - REPLACE_WITH_REPO/scripts/keel_mcp.py
+    env:
+      PYTHONUNBUFFERED: "1"

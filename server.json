@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.lutfizp/keel",
+  "title": "Keel",
+  "description": "Control plane MCP for scoped recon, triage, and bounded proofs.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/lutfizp/keel",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/lutfizp/keel",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "keel-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "python",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
