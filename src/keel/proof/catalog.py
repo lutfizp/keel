@@ -6,12 +6,13 @@ PLAYBOOK_OWN_SESSION_MARKER = "own_session_marker"
 _PLAYBOOKS = {
     PLAYBOOK_CROSS_ACCOUNT_READ: (
         "GET the same object URL twice using tester session A then session B. "
-        "A mismatch (A 200 with B body, B 403 or different owner) is the proof. "
-        "Only tester accounts. One request pair. No writes."
+        "A unique canary already stored in tester A's resource must be visible to both "
+        "sessions. A denial or missing canary for B proves the control is working. "
+        "Only tester accounts, two GET requests, no writes."
     ),
     PLAYBOOK_OWN_SESSION_MARKER: (
-        "Submit a unique researcher marker in a field the tester already owns. "
-        "Confirm the marker echoes in the tester session only. No other users."
+        "Read a unique canary that the operator placed manually in a tester-owned "
+        "resource. This corroborates reachability but never proves a vulnerability."
     ),
 }
 
@@ -25,9 +26,9 @@ def draft_playbook(playbook_id: str, card_id: str, url: str) -> ProofDraft:
         raise KeyError(playbook_id)
     if playbook_id == PLAYBOOK_CROSS_ACCOUNT_READ:
         steps = [
-            "Send GET with tester A Authorization or Cookie",
-            "Send GET with tester B Authorization or Cookie",
-            "Compare status and owner fields; stop",
+            "Verify the operator-provided canary is present using tester A",
+            "GET the same tester-A-owned URL using tester B",
+            "Prove only if the identical canary is visible to B; stop after two requests",
         ]
         requests = [
             {"method": "GET", "url": url, "as": "tester_a"},
@@ -35,9 +36,9 @@ def draft_playbook(playbook_id: str, card_id: str, url: str) -> ProofDraft:
         ]
     else:
         steps = [
-            "PUT or POST a unique marker on a tester-owned resource",
-            "GET the same resource in the same session",
-            "Confirm marker; do not touch other accounts",
+            "Operator manually places a unique canary in a disposable tester-owned resource",
+            "GET the resource once using tester A",
+            "Record corroboration only; do not label this a vulnerability proof",
         ]
         requests = [
             {"method": "GET", "url": url, "as": "tester_a", "marker": True},
@@ -48,4 +49,6 @@ def draft_playbook(playbook_id: str, card_id: str, url: str) -> ProofDraft:
         steps=steps,
         requests=requests,
         harm_rationale=_PLAYBOOKS[playbook_id],
+        request_budget=2 if playbook_id == PLAYBOOK_CROSS_ACCOUNT_READ else 1,
+        required_inputs=["proof_target_ref", "expected_marker"],
     )

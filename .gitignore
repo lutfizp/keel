@@ -7,6 +7,8 @@ Thumbs.db
 venv/
 .env
 .env.*
+credentials.json
+engagement-approval.local.json
 
 .data/
 *.db

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -172,27 +174,39 @@ def install_probe_tools(os_id: str) -> None:
         run(["go", "install", "-v", "github.com/projectdiscovery/httpx/cmd/httpx@latest"], env=env)
         run(["go", "install", "-v", "github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"], env=env)
         print(f"ensure {gobin} is on PATH")
-        refresh_nuclei_templates()
+        nuclei_name = "nuclei.exe" if os_id == "windows" else "nuclei"
+        refresh_nuclei_templates(gobin / nuclei_name)
         return
     if os_id == "windows" and shutil.which("winget"):
         run(["winget", "install", "-e", "--id", "GoLang.Go", "--accept-package-agreements", "--accept-source-agreements"])
         raise BootstrapError("Go was installed; open a new terminal and re-run: python scripts/bootstrap.py tools")
-    install_pd_from_github(os_id)
-    refresh_nuclei_templates()
+    nuclei = install_pd_from_github(os_id)
+    refresh_nuclei_templates(nuclei)
 
 
-def install_pd_from_github(os_id: str) -> None:
+def install_pd_from_github(os_id: str) -> Path:
     dest = Path.home() / ".keel" / "bin"
     dest.mkdir(parents=True, exist_ok=True)
     arch = github_arch()
     os_label = {"macos": "macOS", "windows": "windows", "debian": "linux", "rhel": "linux", "linux": "linux"}[os_id]
     for tool in PD_TOOLS:
         repo = f"projectdiscovery/{tool}"
-        url = latest_asset_url(repo, os_label, arch)
+        url, checksums_url = latest_asset_urls(repo, os_label, arch)
         archive = download(url)
-        extract_binary(archive, dest, tool, os_id == "windows")
+        checksums = download(checksums_url)
+        try:
+            verify_release_checksum(
+                archive,
+                checksums,
+                Path(urlparse(url).path).name,
+            )
+            extract_binary(archive, dest, tool, os_id == "windows")
+        finally:
+            archive.unlink(missing_ok=True)
+            checksums.unlink(missing_ok=True)
         print(f"installed {dest / tool}")
     print(f"ensure {dest} is on PATH")
+    return dest / ("nuclei.exe" if os_id == "windows" else "nuclei")
 
 
 def github_arch() -> str:
@@ -202,16 +216,49 @@ def github_arch() -> str:
     return "amd64"
 
 
-def latest_asset_url(repo: str, os_label: str, arch: str) -> str:
+def latest_asset_urls(repo: str, os_label: str, arch: str) -> tuple[str, str]:
     api = f"https://api.github.com/repos/{repo}/releases/latest"
     with urllib.request.urlopen(api, timeout=30) as response:
         payload = json.loads(response.read().decode())
+    return release_asset_urls(payload, repo, os_label, arch)
+
+
+def release_asset_urls(
+    payload: dict, repo: str, os_label: str, arch: str
+) -> tuple[str, str]:
     needle = f"{os_label}_{arch}".lower()
+    archive_url = ""
+    checksums_url = ""
     for asset in payload.get("assets", []):
         name = str(asset.get("name", "")).lower()
-        if needle in name.replace("aarch64", "arm64") and name.endswith((".zip", ".tgz", ".tar.gz")):
-            return str(asset["browser_download_url"])
-    raise BootstrapError(f"no GitHub asset for {repo} {os_label} {arch}")
+        if "checksums" in name and name.endswith(".txt"):
+            checksums_url = str(asset["browser_download_url"])
+        if needle in name.replace("aarch64", "arm64") and name.endswith(
+            (".zip", ".tgz", ".tar.gz")
+        ):
+            archive_url = str(asset["browser_download_url"])
+    if not archive_url or not checksums_url:
+        raise BootstrapError(
+            f"release for {repo} lacks a binary or checksum for {os_label} {arch}"
+        )
+    return archive_url, checksums_url
+
+
+def verify_release_checksum(archive: Path, checksums: Path, asset_name: str) -> None:
+    expected = ""
+    for line in checksums.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[-1].lstrip("*") == asset_name:
+            expected = fields[0].lower()
+            break
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise BootstrapError(f"release checksum is missing for {asset_name}")
+    digest = hashlib.sha256()
+    with archive.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected:
+        raise BootstrapError(f"release checksum mismatch for {asset_name}")
 
 
 def download(url: str) -> Path:
@@ -243,10 +290,10 @@ def extract_binary(archive: Path, dest: Path, name: str, windows: bool) -> None:
     archive.unlink(missing_ok=True)
 
 
-def refresh_nuclei_templates() -> None:
-    nuclei = shutil.which("nuclei")
+def refresh_nuclei_templates(executable: Path | None = None) -> None:
+    nuclei = str(executable) if executable and executable.is_file() else shutil.which("nuclei")
     if nuclei:
-        run([nuclei, "-update-templates"], check=False)
+        run([str(nuclei), "-update-templates"], check=False)
 
 
 def venv_python(os_id: str) -> Path:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -8,3 +10,4 @@ class CommandResult:
     stdout: str
     stderr: str
     throttled: bool
+    retry_after_seconds: float | None = None

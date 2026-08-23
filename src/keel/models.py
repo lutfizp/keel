@@ -29,6 +29,21 @@ class CardStatus(str, Enum):
     WONT_FIX_IMPACT = "wont_fix_impact"
 
 
+class ValidationState(str, Enum):
+    OBSERVED = "observed"
+    HYPOTHESIS = "hypothesis"
+    CORROBORATED = "corroborated"
+    PROVEN = "proven"
+    REFUTED = "refuted"
+
+
+class EvidenceStrength(str, Enum):
+    UNVERIFIED = "unverified"
+    SINGLE_SOURCE = "single_source"
+    MULTI_SOURCE = "multi_source"
+    SAFE_PROOF = "safe_proof"
+
+
 class WaveKind(str, Enum):
     PROBE_ALIVE = "probe_alive"
     TEMPLATE_SCAN = "template_scan"
@@ -49,6 +64,14 @@ class FindingCard(BaseModel):
     status: CardStatus = CardStatus.NOISE
     evidence: dict[str, Any] = Field(default_factory=dict)
     sources: list[str] = Field(default_factory=list)
+    semantic_key: str = ""
+    vulnerability_class: str = "unclassified"
+    parameter: str = ""
+    method: str = "GET"
+    validation_state: ValidationState = ValidationState.OBSERVED
+    evidence_strength: EvidenceStrength = EvidenceStrength.UNVERIFIED
+    corroboration_count: int = 1
+    priority_score: float = 0.0
 
 
 class WaveSpec(BaseModel):
@@ -65,3 +88,5 @@ class ProofDraft(BaseModel):
     steps: list[str]
     requests: list[dict[str, Any]]
     harm_rationale: str
+    request_budget: int = 0
+    required_inputs: list[str] = Field(default_factory=list)

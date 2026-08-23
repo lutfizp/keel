@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "engagements": {
+    "bb-example-01": {
+      "scope_hosts": [
+        "target.example",
+        "*.target.example"
+      ],
+      "exclude_hosts": [
+        "status.target.example"
+      ],
+      "playbooks": [
+        "cross_account_read",
+        "own_session_marker"
+      ],
+      "credential_refs": [
+        "tester-a",
+        "tester-b"
+      ],
+      "max_requests_per_second": 2,
+      "max_parallel_hosts": 1,
+      "max_wave_seconds": 120,
+      "max_wave_requests": 120,
+      "max_engagement_requests": 1000,
+      "max_response_bytes": 65536,
+      "max_proof_requests": 2,
+      "nuclei_template_ids": [
+        "REPLACE_WITH_REVIEWED_TEMPLATE_ID"
+      ],
+      "proof_targets": {
+        "tester-a-object": {
+          "url": "https://target.example/api/test-resources/REPLACE_WITH_OBJECT_ID",
+          "canary_sha256": "30cbd9cec2c75443b2899ed251e894effe49bdcc1f62c58c16a6c8bbf82c8af8",
+          "owner_credential_ref": "tester-a",
+          "peer_credential_ref": "tester-b",
+          "playbooks": [
+            "cross_account_read",
+            "own_session_marker"
+          ]
+        }
+      },
+      "expires_at": "2026-12-31T23:59:59Z"
+    }
+  }
+}

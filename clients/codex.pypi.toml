@@ -1,7 +1,0 @@
-[mcp_servers.keel]
-command = "REPLACE_WITH_KEEL_PENTEST"
-startup_timeout_sec = 30
-tool_timeout_sec = 300
-
-[mcp_servers.keel.env]
-PYTHONUNBUFFERED = "1"

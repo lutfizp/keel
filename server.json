@@ -3,7 +3,7 @@
   "name": "io.github.lutfizp/keel",
   "title": "Keel",
   "description": "Control plane MCP for scoped recon, triage, and bounded proofs.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "repository": {
     "url": "https://github.com/lutfizp/keel",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "keel-pentest",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "runtimeHint": "python",
       "transport": {
         "type": "stdio"

@@ -1,7 +1,5 @@
 mcp_servers:
   keel:
-    command: python3
-    args:
-      - REPLACE_WITH_REPO/scripts/keel_mcp.py
+    command: keel-pentest
     env:
       PYTHONUNBUFFERED: "1"

@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "keel": {
+      "type": "stdio",
       "command": "python3",
-      "args": ["scripts/keel_mcp.py"],
+      "args": ["${workspaceFolder}/scripts/keel_mcp.py"],
       "env": {
         "PYTHONUNBUFFERED": "1"
       }

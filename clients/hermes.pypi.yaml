@@ -1,5 +1,0 @@
-mcp_servers:
-  keel:
-    command: REPLACE_WITH_KEEL_PENTEST
-    env:
-      PYTHONUNBUFFERED: "1"

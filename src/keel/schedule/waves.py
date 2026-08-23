@@ -17,20 +17,22 @@ class WaveRunner:
     def admit(self, spec: WaveSpec) -> str:
         policy = self.session.policy
         host = host_of(spec.target)
-        if not policy.host_allowed(host):
-            raise PolicyDenied(f"host {host} is outside scope")
+        if not policy.url_allowed(spec.target):
+            raise PolicyDenied(f"target {spec.target} is outside exact scope")
         if not policy.class_allowed(spec.probe_class):
             raise PolicyDenied(f"class {spec.probe_class.value} is not allowed")
-        until = self.session.paused_hosts.get(host, 0.0)
-        now = time.monotonic()
+        until = self.session.cooldown_until(host)
+        now = time.time()
         if until > now:
             raise PolicyDenied(f"host {host} is cooling down")
-        self.buckets.gate(host)
+        try:
+            self.buckets.gate(host)
+        except RuntimeError as exc:
+            raise PolicyDenied(str(exc)) from exc
         return host
 
-    def note_throttle(self, host: str) -> None:
-        self.session.too_many_count += 1
-        self.session.paused_hosts[host] = time.monotonic() + 30.0
+    def note_throttle(self, host: str, retry_after_seconds: float | None = None) -> None:
+        self.session.note_throttle(host, retry_after_seconds)
         self.buckets.release(host)
 
     def finish(self, host: str) -> None:

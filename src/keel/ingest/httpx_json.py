@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from keel.catalog.fingerprint import fingerprint, load_json_lines, split_url
-from keel.models import FindingCard, ImpactClass
+from keel.models import EvidenceStrength, FindingCard, ImpactClass, ValidationState
+from keel.proof.sanitize import sanitize_evidence
+
+
+def invalid_httpx_record_count(stdout: str) -> int:
+    invalid = 0
+    for row in load_json_lines(stdout):
+        url = row.get("url") or row.get("input")
+        if not isinstance(url, str) or not url.strip():
+            invalid += 1
+    return invalid
 
 
 def cards_from_httpx(stdout: str) -> list[FindingCard]:
@@ -11,7 +21,8 @@ def cards_from_httpx(stdout: str) -> list[FindingCard]:
         if not url:
             continue
         host, path = split_url(url)
-        fp = fingerprint("alive", host, path, str(row.get("status_code", "")))
+        vulnerability_class = "reachable_http_service"
+        fp = fingerprint(vulnerability_class, host, path)
         cards.append(
             FindingCard(
                 card_id=fp,
@@ -22,8 +33,12 @@ def cards_from_httpx(stdout: str) -> list[FindingCard]:
                 title="Reachable HTTP service",
                 scanner_severity="info",
                 impact_class=ImpactClass.NONE,
-                evidence={"url": url, "raw": row},
+                evidence={"url": url, "raw": sanitize_evidence(row)},
                 sources=["httpx"],
+                semantic_key=fp,
+                vulnerability_class=vulnerability_class,
+                validation_state=ValidationState.OBSERVED,
+                evidence_strength=EvidenceStrength.SINGLE_SOURCE,
             )
         )
     return cards

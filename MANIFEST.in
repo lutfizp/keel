@@ -1,3 +1,11 @@
 include README.md
+include INSTALL.md
+include SECURITY_MODEL.md
+include ROADMAP.md
+include LICENSE
 include server.json
 recursive-include src *.py
+recursive-include examples *.json
+recursive-include clients *.md *.json *.toml *.yaml
+include opencode.pypi.json.example
+include opencode.v2.json.example

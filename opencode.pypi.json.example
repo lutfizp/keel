@@ -3,7 +3,7 @@
   "mcp": {
     "keel": {
       "type": "local",
-      "command": ["REPLACE_WITH_KEEL_PENTEST"],
+      "command": ["keel-pentest"],
       "enabled": true,
       "timeout": 300000
     }
