@@ -4,10 +4,17 @@ import pytest
 
 from keel.catalog.store import CardStore
 from keel.engagement.policy import EngagementPolicy
-from keel.models import CardStatus, FindingCard, ImpactClass, ValidationState
+from keel.models import (
+    CardStatus,
+    ExploitabilityState,
+    FindingCard,
+    ImpactClass,
+    ValidationState,
+)
 from keel.proof.runner import mark_proven, mark_refuted
 from keel.triage.filters import default_visible, impact_from_severity
 from keel.triage.impact import apply_impact
+from keel.triage.exploitability import assess_card
 
 
 def test_scope_allows_subdomain() -> None:
@@ -44,6 +51,69 @@ def test_medium_candidate_visible() -> None:
         impact_class=ImpactClass.NONE,
     )
     assert default_visible(card) is True
+
+
+def test_typed_idor_assessment_sets_candidate_impact_and_safe_proof() -> None:
+    card = assess_card(
+        FindingCard(
+            card_id="idor",
+            fingerprint="idor",
+            host="app.example.com",
+            path="/objects/1",
+            matcher="idor",
+            title="BOLA",
+            scanner_severity="high",
+            vulnerability_class="broken_object_authorization",
+            validation_state=ValidationState.HYPOTHESIS,
+        )
+    )
+
+    assert card.impact_class == ImpactClass.DATA_OTHER_USERS
+    assert card.exploitability.state == ExploitabilityState.CANDIDATE
+    assert card.exploitability.safe_proof_playbooks == [
+        "cross_account_read",
+        "unauth_access_probe",
+    ]
+    assert card.exploitability.missing_evidence
+    assert card.exploitability.negative_control
+
+
+def test_generic_high_severity_does_not_manufacture_exploitability() -> None:
+    card = assess_card(
+        FindingCard(
+            card_id="generic",
+            fingerprint="generic",
+            host="app.example.com",
+            path="/",
+            matcher="generic-high",
+            title="Generic high alert",
+            scanner_severity="high",
+        )
+    )
+
+    assert impact_from_severity("high", "generic-high", "Generic high alert") == (
+        ImpactClass.NONE
+    )
+    assert card.exploitability.state == ExploitabilityState.UNSUPPORTED
+
+
+def test_proven_assessment_has_no_missing_evidence() -> None:
+    card = FindingCard(
+        card_id="proven-idor",
+        fingerprint="proven-idor",
+        host="app.example.com",
+        path="/objects/1",
+        matcher="idor",
+        title="BOLA",
+        scanner_severity="high",
+        vulnerability_class="broken_object_authorization",
+        validation_state=ValidationState.PROVEN,
+    )
+
+    assessed = assess_card(card)
+
+    assert assessed.exploitability.state == ExploitabilityState.PROVEN
+    assert assessed.exploitability.missing_evidence == []
 
 
 def test_agent_impact_claim_does_not_manufacture_evidence_confidence(

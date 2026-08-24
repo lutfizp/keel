@@ -9,6 +9,10 @@ class PolicyDenied(KeelError):
     pass
 
 
+class WaveBusy(PolicyDenied):
+    pass
+
+
 class UnknownEngagement(KeelError):
     pass
 
@@ -18,6 +22,10 @@ class UnknownCard(KeelError):
 
 
 class AdapterFailed(KeelError):
+    pass
+
+
+class OperationCancelled(KeelError):
     pass
 
 

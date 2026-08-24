@@ -2,6 +2,7 @@ from keel.catalog.store import CardStore
 from keel.errors import UnknownCard
 from keel.models import CardStatus, ImpactClass, ValidationState
 from keel.triage.filters import priority_score
+from keel.triage.exploitability import assess_card
 
 
 def apply_impact(
@@ -30,6 +31,7 @@ def apply_impact(
             card.status = CardStatus.HYPOTHESIS
             if card.validation_state == ValidationState.OBSERVED:
                 card.validation_state = ValidationState.HYPOTHESIS
+    card = assess_card(card)
     card.priority_score = priority_score(card)
     store.upsert(card)
     return card.model_dump()

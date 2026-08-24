@@ -5,12 +5,15 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from collections.abc import Iterator
 
-from keel.adapters.base import CommandResult
-from keel.errors import AdapterFailed
+from keel.adapters.base import CommandResult, ProgressCallback
+from keel.errors import AdapterFailed, OperationCancelled
+from keel.paths import bin_dir
 
 _PROJECTDISCOVERY = {"httpx", "nuclei"}
 _REQUIRED_FLAGS = {
@@ -87,22 +90,6 @@ def isolated_scanner_config() -> Iterator[Path]:
         yield path
 
 
-def _candidate_executables(binary: str) -> list[Path]:
-    candidates: list[Path] = []
-    seen: set[Path] = set()
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        if not directory:
-            continue
-        found = shutil.which(binary, path=directory)
-        if not found:
-            continue
-        candidate = Path(found).resolve()
-        if candidate not in seen:
-            seen.add(candidate)
-            candidates.append(candidate)
-    return candidates
-
-
 def _is_projectdiscovery(candidate: Path, binary: str) -> bool:
     try:
         completed = subprocess.run(
@@ -142,12 +129,40 @@ def resolve_projectdiscovery(binary: str) -> str:
             return str(candidate)
 
     hint = (
-        f"ProjectDiscovery {binary} is not installed or is not on PATH. "
-        f"Set {env_name} to its absolute path."
+        f"ProjectDiscovery {binary} is not installed. Run `keel-pentest setup` to "
+        f"auto-install it, or set {env_name} to its absolute path."
     )
     if binary == "httpx":
         hint += " The Python httpx command installed with this package is a different program."
     raise AdapterFailed(hint)
+
+
+def _candidate_executables(binary: str) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+    for source in _candidate_dirs():
+        found = shutil.which(binary, path=source)
+        if not found:
+            continue
+        candidate = Path(found).resolve()
+        if candidate not in seen:
+            seen.add(candidate)
+            candidates.append(candidate)
+    return candidates
+
+
+def _candidate_dirs() -> list[str]:
+    # The Keel-managed bin directory wins over PATH so a provisioned scanner is
+    # found even when a GUI MCP client launches Keel with a reduced environment.
+    dirs: list[str] = []
+    try:
+        managed = str(bin_dir())
+        if managed:
+            dirs.append(managed)
+    except OSError:
+        pass
+    dirs.extend(part for part in os.environ.get("PATH", "").split(os.pathsep) if part)
+    return dirs
 
 
 def validate_projectdiscovery_capabilities(binary: str, executable: str) -> None:
@@ -174,33 +189,118 @@ def validate_projectdiscovery_capabilities(binary: str, executable: str) -> None
         )
 
 
-def run_cli(argv: list[str], timeout: int = 120) -> CommandResult:
+def run_cli(
+    argv: list[str],
+    timeout: int = 120,
+    cancel_event: threading.Event | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> CommandResult:
     binary = argv[0]
     if binary in _PROJECTDISCOVERY:
         argv = [resolve_projectdiscovery(binary), *argv[1:]]
         binary = argv[0]
     if shutil.which(binary) is None:
         raise AdapterFailed(f"{binary} is not installed")
+    if cancel_event is None and progress_callback is None:
+        try:
+            completed = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env=_scanner_environment(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AdapterFailed(f"{binary} timed out") from exc
+        return _command_result(
+            argv, completed.returncode, completed.stdout, completed.stderr
+        )
+    return _run_managed(
+        argv,
+        binary,
+        timeout,
+        cancel_event or threading.Event(),
+        progress_callback,
+    )
+
+
+def _run_managed(
+    argv: list[str],
+    binary: str,
+    timeout: int,
+    cancel_event: threading.Event,
+    progress_callback: ProgressCallback | None,
+) -> CommandResult:
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             argv,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
-            check=False,
             env=_scanner_environment(),
         )
-    except subprocess.TimeoutExpired as exc:
-        raise AdapterFailed(f"{binary} timed out") from exc
-    blob = completed.stdout + "\n" + completed.stderr
+    except OSError as exc:
+        raise AdapterFailed(f"cannot start {binary}: {exc}") from exc
+    started = time.monotonic()
+    while True:
+        if cancel_event.is_set():
+            _stop_process(process)
+            raise OperationCancelled(f"{binary} execution cancelled")
+        elapsed = time.monotonic() - started
+        if elapsed >= timeout:
+            _stop_process(process)
+            raise AdapterFailed(f"{binary} timed out")
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    min(85.0, 10.0 + (elapsed / max(timeout, 1)) * 75.0),
+                    "scanner_running",
+                )
+            except Exception as exc:
+                _stop_process(process)
+                raise AdapterFailed(
+                    f"{binary} stopped because progress state could not be persisted"
+                ) from exc
+        try:
+            stdout, stderr = process.communicate(timeout=min(0.25, timeout - elapsed))
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    if cancel_event.is_set():
+        raise OperationCancelled(f"{binary} execution cancelled")
+    return _command_result(argv, process.returncode or 0, stdout, stderr)
+
+
+def _stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.terminate()
+    except OSError:
+        return
+    try:
+        process.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            return
+        process.communicate()
+
+
+def _command_result(
+    argv: list[str], returncode: int, stdout: str, stderr: str
+) -> CommandResult:
+    blob = stdout + "\n" + stderr
     throttled = bool(_THROTTLE.search(blob))
     retry_match = _RETRY_AFTER.search(blob)
     retry_after = float(retry_match.group(1)) if retry_match else None
     return CommandResult(
         argv=argv,
-        returncode=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
         throttled=throttled,
         retry_after_seconds=retry_after,
     )

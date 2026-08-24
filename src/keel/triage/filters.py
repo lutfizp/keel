@@ -1,4 +1,6 @@
 from keel.models import FindingCard, ImpactClass, ValidationState
+from keel.catalog.fingerprint import canonical_vulnerability_class
+from keel.triage.exploitability import suggested_impact
 
 _HARDENING_MARKERS = (
     "header",
@@ -32,12 +34,16 @@ def looks_hardening(template: str, title: str) -> bool:
     return any(marker in blob for marker in _HARDENING_MARKERS)
 
 
-def impact_from_severity(severity: str, template: str, title: str) -> ImpactClass:
+def impact_from_severity(
+    severity: str,
+    template: str,
+    title: str,
+    vulnerability_class: str = "",
+) -> ImpactClass:
     if looks_hardening(template, title):
         return ImpactClass.HARDENING
-    if severity in {"info", "unknown", "low"}:
-        return ImpactClass.NONE
-    return ImpactClass.NONE
+    canonical = vulnerability_class or canonical_vulnerability_class(template, title)
+    return suggested_impact(canonical)
 
 
 def default_visible(card: FindingCard) -> bool:

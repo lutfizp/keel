@@ -198,3 +198,143 @@ def test_broker_wraps_transport_errors_without_response_data() -> None:
             broker.get("https://app.example.com/objects/1", {})
     finally:
         client.close()
+
+
+def _run_named(playbook_id: str, card: FindingCard, handler, marker: str = "keel-canary-1234") -> dict:
+    policy = _policy()
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    broker = ProofRequestBroker(policy, BucketMap(20), 2, client=client)
+    try:
+        return run_playbook(
+            policy,
+            card,
+            playbook_id,
+            "tester-a",
+            "tester-b",
+            marker,
+            broker,
+            credential_resolver=lambda ref, _: {"Authorization": ref} if ref else {},
+        )
+    finally:
+        client.close()
+
+
+def test_reflected_marker_proves_unescaped_html_and_emits_repro() -> None:
+    from keel.proof.catalog import PLAYBOOK_REFLECTED_MARKER
+    from keel.proof.runner import _reflection_probe
+
+    marker = "keelxss99"
+    probe = _reflection_probe(marker)
+    card = FindingCard(
+        card_id="xss",
+        fingerprint="xss",
+        semantic_key="xss",
+        host="app.example.com",
+        path="/search",
+        matcher="xss",
+        title="Reflected XSS",
+        scanner_severity="high",
+        vulnerability_class="cross_site_scripting",
+        parameter="q",
+        validation_state=ValidationState.HYPOTHESIS,
+        evidence={"url": "https://app.example.com/search?q=test"},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = str(request.url.params.get("q", ""))
+        if probe in query:
+            return httpx.Response(200, text=f"<html>result {probe}</html>")
+        return httpx.Response(200, text="<html>result test</html>")
+
+    outcome = _run_named(PLAYBOOK_REFLECTED_MARKER, card, handler, marker)
+
+    assert outcome["decision"] == "proven"
+    assert "curl" in outcome["repro_script"]
+    assert "without changing server data" in outcome["hunter_impact"] or outcome["hunter_impact"]
+
+
+def test_reflected_marker_html_encoding_is_protected() -> None:
+    from keel.proof.catalog import PLAYBOOK_REFLECTED_MARKER
+    import html as html_lib
+    from keel.proof.runner import _reflection_probe
+
+    marker = "keelxss99"
+    probe = _reflection_probe(marker)
+    card = FindingCard(
+        card_id="xss",
+        fingerprint="xss",
+        semantic_key="xss",
+        host="app.example.com",
+        path="/search",
+        matcher="xss",
+        title="Reflected XSS",
+        scanner_severity="high",
+        vulnerability_class="cross_site_scripting",
+        parameter="q",
+        validation_state=ValidationState.HYPOTHESIS,
+        evidence={"url": "https://app.example.com/search?q=test"},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = str(request.url.params.get("q", ""))
+        if probe in query:
+            return httpx.Response(200, text=f"<html>result {html_lib.escape(probe)}</html>")
+        return httpx.Response(200, text="<html>result test</html>")
+
+    assert _run_named(PLAYBOOK_REFLECTED_MARKER, card, handler, marker)["decision"] == "protected"
+
+
+def test_open_redirect_canary_proves_offsite_location() -> None:
+    from keel.proof.catalog import PLAYBOOK_OPEN_REDIRECT_CANARY
+    from keel.proof.runner import REDIRECT_CANARY_HOST
+
+    marker = "keelredir1"
+    card = FindingCard(
+        card_id="redir",
+        fingerprint="redir",
+        semantic_key="redir",
+        host="app.example.com",
+        path="/out",
+        matcher="redirect",
+        title="Open redirect",
+        scanner_severity="medium",
+        vulnerability_class="open_redirect",
+        parameter="next",
+        validation_state=ValidationState.HYPOTHESIS,
+        evidence={"url": "https://app.example.com/out?next=/home"},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nxt = str(request.url.params.get("next", ""))
+        if REDIRECT_CANARY_HOST in nxt:
+            return httpx.Response(302, headers={"Location": nxt})
+        return httpx.Response(302, headers={"Location": "/home"})
+
+    outcome = _run_named(PLAYBOOK_OPEN_REDIRECT_CANARY, card, handler, marker)
+    assert outcome["decision"] == "proven"
+    assert outcome["redirect_host"] == REDIRECT_CANARY_HOST
+
+
+def test_unauth_access_probe_proves_missing_session_check() -> None:
+    from keel.proof.catalog import PLAYBOOK_UNAUTH_ACCESS_PROBE
+
+    card = FindingCard(
+        card_id="expo",
+        fingerprint="expo",
+        semantic_key="expo",
+        host="app.example.com",
+        path="/objects/1",
+        matcher="exposure",
+        title="Unauth data",
+        scanner_severity="high",
+        vulnerability_class="sensitive_data_exposure",
+        validation_state=ValidationState.HYPOTHESIS,
+        evidence={"url": "https://app.example.com/objects/1"},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="owned keel-canary-1234")
+
+    outcome = _run_named(PLAYBOOK_UNAUTH_ACCESS_PROBE, card, handler)
+    assert outcome["decision"] == "proven"
+    assert "no session" in outcome["hunter_impact"]

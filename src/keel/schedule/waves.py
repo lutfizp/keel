@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from keel.errors import PolicyDenied
+from keel.errors import PolicyDenied, WaveBusy
 from keel.engagement.session import EngagementSession
 from keel.engagement.urls import host_of
 from keel.models import WaveSpec
@@ -28,7 +28,7 @@ class WaveRunner:
         try:
             self.buckets.gate(host)
         except RuntimeError as exc:
-            raise PolicyDenied(str(exc)) from exc
+            raise WaveBusy(str(exc)) from exc
         return host
 
     def note_throttle(self, host: str, retry_after_seconds: float | None = None) -> None:

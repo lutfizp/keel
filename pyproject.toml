@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keel-pentest"
-version = "0.2.0"
-description = "Control plane MCP for scoped recon, triage, and bounded proofs."
+version = "0.3.0"
+description = "Control plane MCP that dedups scanner output, rate-limits hosts, and runs non-destructive proofs."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

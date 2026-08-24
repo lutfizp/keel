@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from keel.models import EvidenceStrength, FindingCard, ValidationState, WaveSpec
+from keel.models import EvidenceStrength, FindingCard, ValidationState, WaveJob, WaveSpec
+from keel.triage.exploitability import assess_card
 from keel.triage.filters import default_visible, priority_score
 
 
@@ -64,6 +65,18 @@ class CardStore:
             )
             """
         )
+        self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS jobs (
+                job_id TEXT PRIMARY KEY,
+                wave_id TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        self._db.execute(
+            "CREATE INDEX IF NOT EXISTS jobs_wave_id ON jobs(wave_id)"
+        )
         self._db.commit()
         self._backfill_semantic_keys()
 
@@ -104,6 +117,7 @@ class CardStore:
                 card = self._merge(existing, card)
                 card.fingerprint = storage_fingerprint
                 card.card_id = existing.card_id
+            card = assess_card(card)
             card.priority_score = priority_score(card)
             self._db.execute(
                 """
@@ -191,6 +205,7 @@ class CardStore:
             rows = self._db.execute("SELECT payload FROM cards").fetchall()
         cards = [FindingCard.model_validate_json(row["payload"]) for row in rows]
         for card in cards:
+            assess_card(card)
             card.priority_score = priority_score(card)
         cards.sort(key=lambda card: (card.priority_score, card.confidence), reverse=True)
         if include_noise:
@@ -230,6 +245,28 @@ class CardStore:
         with self._lock:
             rows = self._db.execute("SELECT payload FROM waves").fetchall()
         return [WaveSpec.model_validate_json(row["payload"]) for row in rows]
+
+    def save_job(self, job: WaveJob) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO jobs(job_id, wave_id, payload) VALUES (?, ?, ?)",
+                (job.job_id, job.wave_id, job.model_dump_json()),
+            )
+            self._db.commit()
+
+    def get_job(self, job_id: str) -> WaveJob | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT payload FROM jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        return WaveJob.model_validate_json(row["payload"]) if row is not None else None
+
+    def load_jobs(self) -> list[WaveJob]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT payload FROM jobs ORDER BY rowid"
+            ).fetchall()
+        return [WaveJob.model_validate_json(row["payload"]) for row in rows]
 
     def append_audit(self, event_type: str, payload: Any) -> None:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)

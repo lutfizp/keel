@@ -1,4 +1,6 @@
-from keel.adapters.base import CommandResult
+import threading
+
+from keel.adapters.base import CommandResult, ProgressCallback
 from keel.adapters.process import isolated_scanner_config, run_cli
 
 
@@ -7,11 +9,12 @@ def probe_alive(
     rate: float,
     timeout: int = 90,
     max_response_bytes: int = 1_048_576,
+    cancel_event: threading.Event | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> CommandResult:
     delay = max(int(1 / max(rate, 0.01) * 1000), 50)
     with isolated_scanner_config() as config_path:
-        return run_cli(
-            [
+        argv = [
                 "httpx",
                 "-u",
                 target,
@@ -35,6 +38,10 @@ def probe_alive(
                 str(config_path),
                 "-auth=false",
                 "-no-color",
-            ],
-            timeout=timeout,
-        )
+            ]
+        kwargs = {"timeout": timeout}
+        if cancel_event is not None:
+            kwargs["cancel_event"] = cancel_event
+        if progress_callback is not None:
+            kwargs["progress_callback"] = progress_callback
+        return run_cli(argv, **kwargs)

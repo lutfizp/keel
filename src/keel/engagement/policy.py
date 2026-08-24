@@ -20,6 +20,7 @@ class EngagementPolicy(BaseModel):
     max_parallel_hosts: int = Field(default=1, ge=1, le=4)
     max_wave_seconds: int = Field(default=120, ge=10, le=600)
     max_wave_requests: int = Field(default=120, ge=1, le=10_000)
+    max_wave_attempts: int = Field(default=2, ge=1, le=5)
     max_engagement_requests: int = Field(default=1_000, ge=1, le=100_000)
     max_response_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
     max_proof_requests: int = Field(default=2, ge=1, le=10)

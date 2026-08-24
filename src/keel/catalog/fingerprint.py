@@ -27,6 +27,7 @@ _CWE_CLASSES = {
     "cwe-862": "missing_authorization",
     "cwe-863": "incorrect_authorization",
     "cwe-918": "server_side_request_forgery",
+    "cwe-601": "open_redirect",
 }
 
 _KEYWORD_CLASSES = (
@@ -40,6 +41,7 @@ _KEYWORD_CLASSES = (
     (("remote code execution", " rce"), "remote_code_execution"),
     (("sensitive data", "information disclosure", "data exposure"), "sensitive_data_exposure"),
     (("open redirect",), "open_redirect"),
+    (("html injection", "html_injection"), "html_injection"),
 )
 
 

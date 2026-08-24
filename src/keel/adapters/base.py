@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+
+
+ProgressCallback = Callable[[float, str], None]
 
 
 @dataclass(frozen=True)

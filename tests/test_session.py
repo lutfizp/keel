@@ -45,6 +45,24 @@ def test_no_template_allowlist_drafts_only_reachability() -> None:
     assert [item.kind for item in waves] == [WaveKind.PROBE_ALIVE]
 
 
+def test_each_reviewed_template_is_drafted_as_its_own_micro_wave() -> None:
+    policy = EngagementPolicy(
+        engagement_id="micro",
+        scope_hosts=["example.com"],
+        nuclei_template_ids=["template-a", "template-b"],
+        max_wave_attempts=3,
+    )
+
+    waves = EngagementSession(policy).draft_waves("https://example.com/")
+    templates = [wave for wave in waves if wave.kind == WaveKind.TEMPLATE_SCAN]
+
+    assert [wave.extra["template_id"] for wave in templates] == [
+        "template-a",
+        "template-b",
+    ]
+    assert all(wave.max_attempts == 3 for wave in waves)
+
+
 def test_bucket_does_not_raise() -> None:
     bucket = TokenBucket(100.0)
     bucket.consume()

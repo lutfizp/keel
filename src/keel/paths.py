@@ -27,3 +27,15 @@ def data_dir() -> Path:
     if state_home:
         return Path(state_home) / "keel" / "engagements"
     return Path.home() / ".local" / "state" / "keel" / "engagements"
+
+
+def bin_dir() -> Path:
+    """Return the managed directory that holds Keel-provisioned scanners.
+
+    Searched before PATH by the scanner resolver, so a plain pip/pipx install can
+    provide httpx and nuclei without the user editing PATH or setting KEEL_*_BIN.
+    """
+    configured = os.environ.get("KEEL_BIN_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return Path.home() / ".keel" / "bin"

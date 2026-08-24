@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.lutfizp/keel",
   "title": "Keel",
-  "description": "Control plane MCP for scoped recon, triage, and bounded proofs.",
-  "version": "0.2.0",
+  "description": "Control plane MCP that dedups scanner output, rate-limits hosts, and runs non-destructive proofs.",
+  "version": "0.3.0",
   "repository": {
     "url": "https://github.com/lutfizp/keel",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "keel-pentest",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "runtimeHint": "python",
       "transport": {
         "type": "stdio"

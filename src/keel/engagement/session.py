@@ -78,20 +78,25 @@ class EngagementSession:
                 kind=WaveKind.PROBE_ALIVE,
                 probe_class=ProbeClass.SAFE_ACTIVE,
                 target=seed_url,
+                max_attempts=self.policy.max_wave_attempts,
             )
         ]
         if (
             self.policy.nuclei_template_ids
             and self.policy.external_template_scan_allowed(seed_url)
         ):
-            waves.append(WaveSpec(
-                wave_id=str(uuid4()),
-                kind=WaveKind.TEMPLATE_SCAN,
-                probe_class=ProbeClass.SAFE_ACTIVE,
-                target=seed_url,
-                extra={
-                    "severity": "medium,high,critical",
-                    "template_ids": self.policy.nuclei_template_ids,
-                },
-            ))
+            waves.extend(
+                WaveSpec(
+                    wave_id=str(uuid4()),
+                    kind=WaveKind.TEMPLATE_SCAN,
+                    probe_class=ProbeClass.SAFE_ACTIVE,
+                    target=seed_url,
+                    max_attempts=self.policy.max_wave_attempts,
+                    extra={
+                        "severity": "medium,high,critical",
+                        "template_id": template_id,
+                    },
+                )
+                for template_id in self.policy.nuclei_template_ids
+            )
         return waves

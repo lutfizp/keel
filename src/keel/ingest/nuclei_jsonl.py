@@ -10,6 +10,7 @@ from keel.catalog.fingerprint import (
 )
 from keel.models import EvidenceStrength, FindingCard, ValidationState
 from keel.proof.sanitize import sanitize_evidence
+from keel.triage.exploitability import assess_card
 from keel.triage.filters import impact_from_severity, severity_of_nuclei
 
 
@@ -49,7 +50,7 @@ def cards_from_nuclei(stdout: str) -> list[FindingCard]:
         method = _request_method(row)
         fp = fingerprint(vulnerability_class, host, path, f"{method}:{parameter}")
         cards.append(
-            FindingCard(
+            assess_card(FindingCard(
                 card_id=fp,
                 fingerprint=fp,
                 host=host,
@@ -57,7 +58,9 @@ def cards_from_nuclei(stdout: str) -> list[FindingCard]:
                 matcher=template,
                 title=name,
                 scanner_severity=severity,
-                impact_class=impact_from_severity(severity, template, name),
+                impact_class=impact_from_severity(
+                    severity, template, name, vulnerability_class
+                ),
                 evidence={"matched": matched, "raw": sanitize_evidence(row)},
                 sources=["nuclei"],
                 semantic_key=fp,
@@ -66,7 +69,7 @@ def cards_from_nuclei(stdout: str) -> list[FindingCard]:
                 method=method,
                 validation_state=ValidationState.HYPOTHESIS,
                 evidence_strength=EvidenceStrength.SINGLE_SOURCE,
-            )
+            ))
         )
     return cards
 

@@ -1,17 +1,19 @@
 # Connect Keel to coding clients
 
-Keel is one local stdio MCP process. Install the PyPI distribution `keel-pentest` with [pipx, uv tool, or a dedicated virtual environment](../INSTALL.md), then resolve its executable:
-
 ```bash
+pipx install keel-pentest
+keel-pentest setup
+keel-pentest doctor
+
 KEEL_COMMAND="$(command -v keel-pentest)"
-test -n "$KEEL_COMMAND"
-"$KEEL_COMMAND" --version
-"$KEEL_COMMAND" doctor
+claude mcp add --scope user --transport stdio keel -- "$KEEL_COMMAND"
 ```
 
-On Windows, use `where.exe keel-pentest` and copy the full `.exe` path into the client. Prefer an absolute path for GUI applications because they often inherit a smaller `PATH` than an interactive shell.
+That is the usual path. GUI clients with a thin `PATH` still find scanners in `~/.keel/bin`. Use the absolute `keel-pentest` path in the client config if the GUI cannot see pipx. Never paste credential values into the client file or a prompt; optional `KEEL_CREDENTIALS_FILE` stays in the server environment.
 
-The generic [mcpServers.json](mcpServers.json), [codex.toml](codex.toml), and [hermes.yaml](hermes.yaml) examples use `keel-pentest` for readability. Replace it with the resolved absolute path when the client cannot find the command. Add operator-file paths to the server environment before starting a real engagement; never paste credential values into the client configuration or a prompt.
+On Windows, `where.exe keel-pentest`.
+
+The snippets below use `keel-pentest` for readability. Swap in `$KEEL_COMMAND` when the client needs an absolute path.
 
 ## Compatibility summary
 

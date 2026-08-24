@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -6,8 +8,15 @@ import pytest
 
 from keel.adapters.base import CommandResult
 from keel.engagement.policy import EngagementPolicy
-from keel.errors import AdapterFailed, PolicyDenied
-from keel.models import FindingCard, ValidationState, WaveKind
+from keel.errors import AdapterFailed, OperationCancelled, PolicyDenied
+from keel.models import (
+    FindingCard,
+    JobState,
+    ValidationState,
+    WaveJob,
+    WaveKind,
+    WaveState,
+)
 from keel.proof.http import ProofRequestBroker
 from keel.runtime import Workspace
 
@@ -31,6 +40,21 @@ def _draft(space: Workspace) -> list[dict]:
     return space.draft_waves("runtime", "https://app.example.com/")
 
 
+def _wait_for_job(
+    space: Workspace,
+    job_id: str,
+    expected: set[JobState],
+    timeout: float = 2.0,
+) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = space.wave_status("runtime", job_id)
+        if status["job"]["state"] in expected:
+            return status
+        time.sleep(0.01)
+    raise AssertionError(f"job {job_id} did not reach {expected}")
+
+
 def test_pending_waves_and_audit_survive_restart(tmp_path: Path) -> None:
     first = Workspace(tmp_path)
     _draft(first)
@@ -44,6 +68,34 @@ def test_pending_waves_and_audit_survive_restart(tmp_path: Path) -> None:
         "waves_drafted",
     }
     assert restored.begin(_policy())["resumed"] is True
+
+
+def test_running_job_is_restored_as_interrupted_and_wave_is_retryable(
+    tmp_path: Path,
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+    wave = space.waves["runtime"][probe["wave_id"]]
+    wave.state = WaveState.RUNNING
+    wave.attempt_count = 1
+    space.stores["runtime"].save_wave(wave)
+    job = WaveJob(
+        job_id="interrupted-job",
+        engagement_id="runtime",
+        wave_id=wave.wave_id,
+        state=JobState.RUNNING,
+        created_at="2026-01-01T00:00:00+00:00",
+        updated_at="2026-01-01T00:00:00+00:00",
+    )
+    space.stores["runtime"].save_job(job)
+
+    restored = Workspace(tmp_path)
+    status = restored.wave_status("runtime", "interrupted-job")
+
+    assert status["job"]["state"] == JobState.INTERRUPTED
+    assert status["wave"]["state"] == WaveState.RETRYABLE_FAILED
+    assert status["wave"]["attempt_count"] == 1
 
 
 def test_nonzero_scanner_exit_keeps_wave_and_ingests_nothing(
@@ -100,7 +152,187 @@ def test_retry_requires_a_new_engagement_request_reservation(
 
     assert calls == 1
     assert space.health("runtime")["requests_reserved"] == 1
-    assert space.health("runtime")["pending_waves"] == 2
+    assert space.health("runtime")["pending_waves"] == 1
+    assert space.health("runtime")["terminal_failed_waves"] == 1
+
+
+def test_wave_becomes_terminal_after_max_attempts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+    calls = 0
+
+    def failed_probe(*_: object, **__: object) -> CommandResult:
+        nonlocal calls
+        calls += 1
+        return CommandResult(["httpx"], 2, "", "failed", False)
+
+    monkeypatch.setattr("keel.runtime.probe_alive", failed_probe)
+
+    for _ in range(2):
+        with pytest.raises(AdapterFailed, match="wave retained"):
+            space.execute_wave("runtime", probe["wave_id"])
+    with pytest.raises(PolicyDenied, match="terminal attempt limit"):
+        space.execute_wave("runtime", probe["wave_id"])
+
+    assert calls == 2
+    stored = space.waves["runtime"][probe["wave_id"]]
+    assert stored.state == WaveState.TERMINAL_FAILED
+    assert stored.attempt_count == 2
+
+
+def test_background_wave_reports_progress_and_survives_restart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+
+    def successful_probe(*_: object, **kwargs: object) -> CommandResult:
+        callback = kwargs["progress_callback"]
+        callback(55.0, "scanner_running")
+        return CommandResult(
+            ["httpx"],
+            0,
+            '{"url":"https://app.example.com/","status_code":200}\n',
+            "",
+            False,
+        )
+
+    monkeypatch.setattr("keel.runtime.probe_alive", successful_probe)
+
+    started = space.start_wave("runtime", probe["wave_id"])
+    job_id = started["job"]["job_id"]
+    completed = _wait_for_job(space, job_id, {JobState.COMPLETED})
+
+    assert completed["job"]["progress_percent"] == 100.0
+    assert completed["job"]["result"]["cards"]
+    assert completed["wave"] is None
+
+    restored = Workspace(tmp_path)
+    restored_status = restored.wave_status("runtime", job_id)
+    assert restored_status["job"]["state"] == JobState.COMPLETED
+    assert restored_status["job"]["result"]["cards"]
+    listing = restored.wave_status("runtime")
+    assert [job["job_id"] for job in listing["jobs"]] == [job_id]
+
+
+def test_background_wave_can_cancel_running_scanner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+    scanner_started = threading.Event()
+
+    def cancellable_probe(*_: object, **kwargs: object) -> CommandResult:
+        cancel_event = kwargs["cancel_event"]
+        callback = kwargs["progress_callback"]
+        scanner_started.set()
+        while not cancel_event.wait(0.01):
+            callback(25.0, "scanner_running")
+        raise OperationCancelled("test scanner cancelled")
+
+    monkeypatch.setattr("keel.runtime.probe_alive", cancellable_probe)
+
+    started = space.start_wave("runtime", probe["wave_id"])
+    job_id = started["job"]["job_id"]
+    assert scanner_started.wait(1.0)
+    space.cancel_wave("runtime", job_id)
+    cancelled = _wait_for_job(space, job_id, {JobState.CANCELLED})
+
+    assert cancelled["job"]["error_type"] == "OperationCancelled"
+    assert cancelled["wave"]["state"] == WaveState.RETRYABLE_FAILED
+    assert space.query_cards("runtime", include_noise=True) == []
+
+
+def test_background_micro_waves_wait_for_same_host_slot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+    template = next(item for item in waves if item["kind"] == WaveKind.TEMPLATE_SCAN)
+    probe_started = threading.Event()
+    release_probe = threading.Event()
+
+    def slow_probe(*_: object, **__: object) -> CommandResult:
+        probe_started.set()
+        assert release_probe.wait(1.0)
+        return CommandResult(
+            ["httpx"],
+            0,
+            '{"url":"https://app.example.com/","status_code":200}\n',
+            "",
+            False,
+        )
+
+    monkeypatch.setattr("keel.runtime.probe_alive", slow_probe)
+    monkeypatch.setattr(
+        "keel.runtime.template_scan",
+        lambda *_, **__: CommandResult(["nuclei"], 0, "", "", False),
+    )
+
+    first = space.start_wave("runtime", probe["wave_id"])
+    assert probe_started.wait(1.0)
+    second = space.start_wave("runtime", template["wave_id"])
+    second_job = second["job"]["job_id"]
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        status = space.wave_status("runtime", second_job)
+        if status["job"]["stage"] == "waiting_for_host_slot":
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError("second micro-wave did not wait for the host slot")
+
+    release_probe.set()
+    _wait_for_job(space, first["job"]["job_id"], {JobState.COMPLETED})
+    _wait_for_job(space, second_job, {JobState.COMPLETED})
+
+
+def test_wave_revalidates_approval_at_scanner_launch_and_releases_slot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    space = Workspace(tmp_path)
+    waves = _draft(space)
+    probe = next(item for item in waves if item["kind"] == WaveKind.PROBE_ALIVE)
+    validation_calls = 0
+    scanner_calls = 0
+
+    def approval_changed(_: EngagementPolicy) -> None:
+        nonlocal validation_calls
+        validation_calls += 1
+        if validation_calls == 2:
+            raise PolicyDenied("approval changed while the wave was queued")
+
+    def successful_probe(*_: object, **__: object) -> CommandResult:
+        nonlocal scanner_calls
+        scanner_calls += 1
+        return CommandResult(
+            ["httpx"],
+            0,
+            '{"url":"https://app.example.com/","status_code":200}\n',
+            "",
+            False,
+        )
+
+    monkeypatch.setattr("keel.runtime.revalidate_scope_approval", approval_changed)
+    monkeypatch.setattr("keel.runtime.probe_alive", successful_probe)
+
+    with pytest.raises(PolicyDenied, match="approval changed"):
+        space.execute_wave("runtime", probe["wave_id"])
+
+    assert validation_calls == 2
+    assert scanner_calls == 0
+    assert space.waves["runtime"][probe["wave_id"]].attempt_count == 0
+
+    result = space.execute_wave("runtime", probe["wave_id"])
+
+    assert result["completed"] is True
+    assert scanner_calls == 1
 
 
 def test_malformed_scanner_output_keeps_wave_without_partial_ingest(

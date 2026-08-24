@@ -20,6 +20,22 @@ def test_nuclei_parser() -> None:
     assert cards[0].scanner_severity == "info"
 
 
+def test_nuclei_idor_gets_typed_candidate_impact() -> None:
+    stdout = (
+        '{"template-id":"idor-check","matched-at":"https://a.example/api/users/1",'
+        '"info":{"name":"IDOR","severity":"high",'
+        '"classification":{"cwe-id":["CWE-639"]}}}\n'
+    )
+
+    card = cards_from_nuclei(stdout)[0]
+
+    assert card.impact_class.value == "data_other_users"
+    assert card.exploitability.safe_proof_playbooks == [
+        "cross_account_read",
+        "unauth_access_probe",
+    ]
+
+
 def test_scanner_record_validators_reject_diagnostic_objects() -> None:
     assert invalid_httpx_record_count('{"error":"probe failed"}\n') == 1
     assert invalid_nuclei_record_count('{"error":"template load failed"}\n') == 1

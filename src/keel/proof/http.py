@@ -21,6 +21,8 @@ class SafeResponse:
     body_sha256: str
     truncated: bool
     content_type: str
+    location: str = ""
+    url: str = ""
 
 
 class ProofRequestBroker:
@@ -77,6 +79,8 @@ class ProofRequestBroker:
                     body_sha256=hashlib.sha256(body_bytes).hexdigest(),
                     truncated=truncated,
                     content_type=response.headers.get("content-type", "")[:200],
+                    location=str(response.headers.get("location", "") or "")[:2048],
+                    url=url,
                 )
         except TargetThrottled:
             raise

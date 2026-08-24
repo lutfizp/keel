@@ -11,7 +11,10 @@
       ],
       "playbooks": [
         "cross_account_read",
-        "own_session_marker"
+        "own_session_marker",
+        "reflected_marker",
+        "open_redirect_canary",
+        "unauth_access_probe"
       ],
       "credential_refs": [
         "tester-a",
@@ -21,6 +24,7 @@
       "max_parallel_hosts": 1,
       "max_wave_seconds": 120,
       "max_wave_requests": 120,
+      "max_wave_attempts": 2,
       "max_engagement_requests": 1000,
       "max_response_bytes": 65536,
       "max_proof_requests": 2,
@@ -35,7 +39,8 @@
           "peer_credential_ref": "tester-b",
           "playbooks": [
             "cross_account_read",
-            "own_session_marker"
+            "own_session_marker",
+            "unauth_access_probe"
           ]
         }
       },

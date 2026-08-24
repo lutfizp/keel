@@ -49,6 +49,42 @@ class WaveKind(str, Enum):
     TEMPLATE_SCAN = "template_scan"
 
 
+class WaveState(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    RETRYABLE_FAILED = "retryable_failed"
+    TERMINAL_FAILED = "terminal_failed"
+
+
+class JobState(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    RETRYABLE_FAILED = "retryable_failed"
+    TERMINAL_FAILED = "terminal_failed"
+    INTERRUPTED = "interrupted"
+
+
+class ExploitabilityState(str, Enum):
+    UNSUPPORTED = "unsupported"
+    CANDIDATE = "candidate"
+    CORROBORATED = "corroborated"
+    PROVEN = "proven"
+    REFUTED = "refuted"
+
+
+class ExploitabilityAssessment(BaseModel):
+    state: ExploitabilityState = ExploitabilityState.UNSUPPORTED
+    candidate_impact: ImpactClass = ImpactClass.NONE
+    rationale: str = "No deterministic exploitability profile is available."
+    required_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    negative_control: str = ""
+    safe_proof_playbooks: list[str] = Field(default_factory=list)
+
+
 class FindingCard(BaseModel):
     card_id: str
     fingerprint: str
@@ -72,6 +108,9 @@ class FindingCard(BaseModel):
     evidence_strength: EvidenceStrength = EvidenceStrength.UNVERIFIED
     corroboration_count: int = 1
     priority_score: float = 0.0
+    exploitability: ExploitabilityAssessment = Field(
+        default_factory=ExploitabilityAssessment
+    )
 
 
 class WaveSpec(BaseModel):
@@ -79,7 +118,25 @@ class WaveSpec(BaseModel):
     kind: WaveKind
     probe_class: ProbeClass
     target: str
+    state: WaveState = WaveState.PENDING
+    attempt_count: int = Field(default=0, ge=0, le=100)
+    max_attempts: int = Field(default=2, ge=1, le=5)
+    last_error: str = ""
     extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class WaveJob(BaseModel):
+    job_id: str
+    engagement_id: str
+    wave_id: str
+    state: JobState = JobState.QUEUED
+    progress_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    stage: str = "queued"
+    created_at: str
+    updated_at: str
+    result: dict[str, Any] | None = None
+    error_type: str = ""
+    error_message: str = ""
 
 
 class ProofDraft(BaseModel):

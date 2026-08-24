@@ -47,6 +47,7 @@ class ApprovalGrant(BaseModel):
     max_parallel_hosts: int = Field(default=1, ge=1, le=4)
     max_wave_seconds: int = Field(default=120, ge=10, le=600)
     max_wave_requests: int = Field(default=120, ge=1, le=10_000)
+    max_wave_attempts: int = Field(default=2, ge=1, le=5)
     max_engagement_requests: int = Field(default=1_000, ge=1, le=100_000)
     max_response_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
     max_proof_requests: int = Field(default=2, ge=1, le=10)
@@ -113,6 +114,8 @@ def approval_for(policy: EngagementPolicy) -> tuple[ApprovalGrant, str]:
         raise ProofDenied("wave duration exceeds operator approval")
     if policy.max_wave_requests > grant.max_wave_requests:
         raise ProofDenied("wave request budget exceeds operator approval")
+    if policy.max_wave_attempts > grant.max_wave_attempts:
+        raise ProofDenied("wave retry limit exceeds operator approval")
     if policy.max_engagement_requests > grant.max_engagement_requests:
         raise ProofDenied("engagement request budget exceeds operator approval")
     if policy.max_response_bytes > grant.max_response_bytes:
@@ -138,12 +141,16 @@ def approval_for(policy: EngagementPolicy) -> tuple[ApprovalGrant, str]:
     return grant, hashlib.sha256(raw).hexdigest()[:16]
 
 
-def approval_manifest_summary() -> dict | None:
-    configured = (
+def approval_configured() -> bool:
+    """Return true when the operator opted into strict manifest-bound mode."""
+    return bool(
         os.environ.get("KEEL_APPROVAL_FILE", "").strip()
         or os.environ.get("KEEL_PROOF_APPROVAL_FILE", "").strip()
     )
-    if not configured:
+
+
+def approval_manifest_summary() -> dict | None:
+    if not approval_configured():
         return None
     manifest, _, path = _load_manifest()
     return {"path": str(path), "engagements": sorted(manifest.engagements)}
@@ -256,9 +263,9 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 
 
 def revalidate_scope_approval(policy: EngagementPolicy) -> ApprovalGrant | None:
+    if not approval_configured():
+        return None
     if not policy.scope_approved:
-        if os.environ.get("KEEL_ALLOW_UNAPPROVED_RECON") == "1":
-            return None
         raise ProofDenied("engagement scope has no active operator approval")
     grant, approval_id = approval_for(policy)
     if approval_id != policy.approval_id:

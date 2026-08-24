@@ -1,3 +1,5 @@
+import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5,6 +7,7 @@ import pytest
 
 from keel.adapters import httpx_probe, nuclei_scan, process
 from keel.adapters.base import CommandResult
+from keel.errors import OperationCancelled
 
 
 def test_nuclei_uses_conservative_flags_and_fractional_rate(
@@ -97,3 +100,16 @@ def test_scanner_process_does_not_inherit_proxy_or_cloud_credentials(
     assert "HTTPS_PROXY" not in environment
     assert "PDCP_API_KEY" not in environment
     assert environment["KEEL_TEST_SENTINEL"] == "kept"
+
+
+def test_managed_process_honors_cancellation() -> None:
+    cancelled = threading.Event()
+    cancelled.set()
+
+    with pytest.raises(OperationCancelled, match="cancelled"):
+        process.run_cli(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            timeout=5,
+            cancel_event=cancelled,
+            progress_callback=lambda *_: None,
+        )

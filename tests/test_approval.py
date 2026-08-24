@@ -155,14 +155,18 @@ def test_manifest_rejects_unknown_or_duplicate_fields(monkeypatch, tmp_path: Pat
         activate_approval(policy)
 
 
-def test_workspace_rejects_unapproved_network_policy(monkeypatch, tmp_path: Path) -> None:
+def test_workspace_allows_self_attested_recon_without_manifest(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.delenv("KEEL_APPROVAL_FILE", raising=False)
     monkeypatch.delenv("KEEL_PROOF_APPROVAL_FILE", raising=False)
     monkeypatch.delenv("KEEL_ALLOW_UNAPPROVED_RECON", raising=False)
     policy = EngagementPolicy(engagement_id="recon", scope_hosts=["app.example.com"])
 
-    with pytest.raises(ProofDenied, match="network traffic"):
-        Workspace(tmp_path).begin(policy)
+    result = Workspace(tmp_path).begin(policy)
+
+    assert result["engagement_id"] == "recon"
+    assert result["proof_approved"] is False
 
 
 def test_manifest_scope_must_match_exactly(monkeypatch, tmp_path: Path) -> None:
@@ -206,6 +210,21 @@ def test_manifest_bounds_nuclei_template_selection(monkeypatch, tmp_path: Path) 
     )
 
     with pytest.raises(ProofDenied, match="template selection"):
+        activate_approval(policy)
+
+
+def test_manifest_bounds_wave_retry_limit(monkeypatch, tmp_path: Path) -> None:
+    approval = tmp_path / "approval.json"
+    _approval(approval)
+    monkeypatch.setenv("KEEL_APPROVAL_FILE", str(approval))
+    policy = EngagementPolicy(
+        engagement_id="bb-1",
+        scope_hosts=["app.example.com"],
+        requests_per_second=2,
+        max_wave_attempts=3,
+    )
+
+    with pytest.raises(ProofDenied, match="retry limit"):
         activate_approval(policy)
 
 

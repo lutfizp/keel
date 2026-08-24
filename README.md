@@ -2,9 +2,9 @@
 
 <img src="https://raw.githubusercontent.com/lutfizp/keel/main/assets/logo.png" alt="Keel" width="520"/>
 
-#
+# Keel
 
-### MCP control plane for authorized pentest and bug bounty
+### The MCP control plane that turns scanner noise into hunter-grade, non-destructive proofs
 
 <!-- mcp-name: io.github.lutfizp/keel -->
 
@@ -13,333 +13,169 @@
 [![MCP](https://img.shields.io/badge/MCP-stdio-purple.svg)](https://modelcontextprotocol.io/)
 [![PyPI](https://img.shields.io/badge/PyPI-keel--pentest-orange.svg)](https://pypi.org/project/keel-pentest/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-io.github.lutfizp%2Fkeel-informational.svg)](https://github.com/lutfizp/keel)
-[![Version](https://img.shields.io/badge/Version-0.2.0-lightgrey.svg)](https://github.com/lutfizp/keel)
+[![Version](https://img.shields.io/badge/Version-0.3.0-lightgrey.svg)](https://github.com/lutfizp/keel)
 
-**Ten MCP tools. Operator-bound scope. Bounded traffic. Evidence states, not scanner claims.**
+**Thirteen MCP tools. Semantic dedup. Per-host rate limits. Safe proofs that show what a hunter can do — without damaging the target.**
 
-[Architecture](#architecture) · [Installation](#installation) · [Operator setup](#operator-approval-and-credentials) · [Clients](#mcp-client-setup) · [Tools](#mcp-tools) · [Proofs](#bounded-proof-semantics) · [Security](#security-boundaries)
+[Why Keel](#why-keel) · [Install](#installation) · [Clients](#mcp-client-setup) · [Proofs](#safe-proofs-that-still-prove-impact) · [Tools](#mcp-tools)
 
 </div>
 
 ---
 
-Keel is a local stdio MCP server for authorized web testing. It gives an AI a small control surface over ProjectDiscovery `httpx` and `nuclei`, normalizes their output into semantic finding cards, and admits only policy-bounded traffic.
+Dumping 150 tools on an agent is easy. The hard problems are **dedup across tools**, **exploitable vs noise**, and **not hammering the target**. Keel is the control plane for those three.
 
-Keel is designed around the difficult parts of agentic testing:
+An AI client talks to Keel, not to `httpx`, `nuclei`, or a shell. Keel drafts one wave at a time, enforces scope and rate limits, merges scanner hits into semantic cards, and runs **GET-only playbooks on tester-owned data**. When a playbook returns `proven`, you get a curl replay a hunter can follow — still without writes, shells, or payload spam.
 
-- exact scope and exclusions owned by the operator;
-- conservative rate, concurrency, duration, response-size, and request budgets;
-- deduplication across scanners by vulnerability class, normalized route, method, and parameter;
-- explicit `observed`, `hypothesis`, `corroborated`, `proven`, and `refuted` states;
-- proof playbooks that use disposable tester-owned data and never store response bodies or credentials;
-- persistent waves, cooldowns, budgets, cards, and an append-only application audit log.
+Use it on programs you are authorized to test.
 
-It is not an autonomous exploit generator and does not make every scanner alert exploitable. Today, only the strict canary-based cross-account read invariant can promote an access-control card to `proven`.
+## Why Keel
+
+| Hard problem | What scanner dumps do | What Keel does |
+|---|---|---|
+| Dedup across tools | One Nuclei template id per row; the same IDOR appears five times | Semantic key from vulnerability class + normalized route + method + parameter. UUID/id/hex tokens collapse. Compatible observations merge. |
+| Exploitable vs noise | High severity = "ship it" | Cards move through `observed` → `hypothesis` → `corroborated` → `proven` / `refuted`. Informational and hardening stay hidden. Typed exploitability names the missing evidence and the negative control. |
+| Not hammering the target | Fire every template at once, retry on 429 | One active wave per host, token buckets, Nuclei concurrency 1, no OAST, no redirects, no unsigned templates, no dos/fuzz/bruteforce/intrusive tags. HTTP 429 becomes a cooldown. |
+
+A wrapper that shells out to a huge toolbox does not have that layer. Keel does — in the scheduler, in the adapters, and in the proof broker.
 
 ## Architecture
-
-The model talks to Keel, not directly to scanner CLIs or a shell. Network approval and credential material live in operator-controlled files outside the AI-writable workspace.
 
 ```mermaid
 flowchart TD
     A[AI coding client] -->|stdio MCP| B[Keel]
-    O[Operator approval manifest] --> C[Policy gate]
-    V[Credential reference file] --> P[Proof broker]
-    B --> C
-    C --> W[Wave scheduler]
-    W --> H[httpx: one target, one thread]
-    W --> N[nuclei: operator-reviewed signed HTTP template IDs]
-    C --> P
-    P -->|GET only, exact budget| T[Approved tester resource]
+    B --> C[Scope and rate gate]
+    C --> W[Background job and wave scheduler]
+    W --> H[httpx: one target]
+    W --> N[nuclei: HTTP templates, bounded]
+    C --> P[Proof broker: GET only]
+    P --> T[Tester-owned resource]
     H --> S[Semantic card store]
     N --> S
     P --> S
     S --> Q[Triage and evidence states]
-    B --> L[Persistent audit and health]
 ```
 
-### How it works
-
-1. The operator creates a manifest that exactly binds an engagement id, scope, exclusions, traffic ceilings, reviewed Nuclei template IDs, expiry, credential references, and optional proof targets.
-2. `begin_engagement` must fit inside that manifest. The legacy `operator_confirmed` argument is ignored and cannot grant permission.
-3. `draft_waves` creates an exact reachability wave and, for host-wide scope without path exclusions, a safe template wave. Drafting sends no traffic.
-4. `execute_wave` revalidates the manifest, selected template IDs, scope, cooldown, concurrency, and remaining budget before starting one external scanner process.
-5. Scanner output is sanitized and merged into semantic cards. The agent may state impact, but that remains a hypothesis rather than manufactured proof.
-6. `execute_proof` revalidates the manifest again and sends one or two brokered GET requests. A proof target must match the card URL, canary hash, playbook, and tester credential pair recorded by the operator.
+1. `begin_engagement` with the hostname you are authorized to test.
+2. `draft_waves` proposes reachability plus template micro-waves. No traffic yet.
+3. `execute_wave` returns a job immediately. Poll `wave_status`. `cancel_wave` kills the scanner.
+4. `query_cards` returns hunter-relevant cards. `assess_exploitability` says what would prove it.
+5. `draft_proof` then `execute_proof` run a GET-only playbook against tester data. `proven` means the invariant held. `protected` means the control worked.
 
 ## Installation
 
-| Role | Name |
-|---|---|
-| PyPI distribution | `keel-pentest` |
-| MCP stdio executable | `keel-pentest` |
-| Python import / module | `keel` |
-| Client server id | `keel` |
-| MCP Registry name | `io.github.lutfizp/keel` |
-
-Do not install the unrelated PyPI project named `keel`. Python 3.10 or newer is required.
-
-For a persistent CLI application, use `pipx` or `uv tool`:
+macOS (Homebrew). `pipx` is a separate tool — install it first. Apple's `/usr/bin/python3` is often 3.9 and cannot install Keel.
 
 ```bash
+brew install pipx python@3.12
+pipx ensurepath
+# open a new terminal, then:
 pipx install keel-pentest
-# or
-uv tool install keel-pentest
-
-keel-pentest --version
-```
-
-Plain `pip` is supported inside a dedicated virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install keel-pentest
-```
-
-Keel also needs the ProjectDiscovery executables named `httpx` and `nuclei`. The Python package named `httpx` is a different program.
-
-```bash
-# macOS
-brew install httpx nuclei
-nuclei -update-templates
-
+keel-pentest setup
 keel-pentest doctor
 ```
 
-`doctor` checks Python, the MCP SDK, the writable state directory, scanner identity and required CLI flags, plus any configured approval or credential files. An old ProjectDiscovery build that lacks Keel's safety flags is rejected. Set `KEEL_HTTPX_BIN` and `KEEL_NUCLEI_BIN` to absolute paths when a GUI client has a reduced `PATH`.
-
-Complete macOS, Linux, Windows, pipx, uv, pip, clone, upgrade, and uninstall instructions are in [INSTALL.md](https://github.com/lutfizp/keel/blob/main/INSTALL.md).
-
-### Local clone
+If `python3.12` is already on the machine and you do not want Homebrew pipx:
 
 ```bash
-git clone https://github.com/lutfizp/keel.git
-cd keel
-sh scripts/bootstrap.sh
-python3 scripts/keel_mcp.py doctor
+python3.12 -m pip install --user pipx
+python3.12 -m pipx ensurepath
+python3.12 -m pipx install keel-pentest
 ```
 
-Windows uses `scripts\bootstrap.ps1`. The MCP Registry entry is discovery metadata; installation from the Registry is not universal across clients.
+`setup` downloads ProjectDiscovery `httpx` and `nuclei` into `~/.keel/bin`. Keel finds them there even when a GUI client has a thin `PATH`. No extra `KEEL_HTTPX_BIN` for a first scan.
 
-## Operator approval and credentials
-
-Network traffic is denied by default until `KEEL_APPROVAL_FILE` points to a valid operator-owned manifest. Keep both files outside any directory the AI client can edit.
+Then point your MCP client at the `keel-pentest` executable:
 
 ```bash
-install -m 600 examples/engagement-approval.json /safe/operator/path/keel-approval.json
-install -m 600 examples/credentials.example.json /safe/operator/path/keel-credentials.json
+claude mcp add --scope user --transport stdio keel -- keel-pentest
+codex mcp add keel -- keel-pentest
+hermes mcp add keel --command keel-pentest
 ```
 
-Edit every placeholder, including `nuclei_template_ids`. Keel never runs the entire installed template collection: the engagement selects a subset of template IDs already reviewed and approved in the manifest. The credential file maps harmless names such as `tester-a` to an `Authorization` or `Cookie` value. MCP calls use only those names; raw secrets are never accepted as proof arguments.
+OpenCode: `"command": ["keel-pentest"]`.
 
-For a proof, manually place a unique, non-secret canary in a disposable resource owned by tester A. Record the exact resource URL, allowed playbook, owner/peer credential refs, and SHA-256 of that canary in `proof_targets`:
+Python 3.10+. Do not `pip install keel` — that is a different project. OS notes and pip/venv: [INSTALL.md](INSTALL.md). Client shapes: [clients/README.md](clients/README.md).
 
-```bash
-python3 -c "import hashlib; print(hashlib.sha256(b'REPLACE_WITH_RANDOM_CANARY').hexdigest())"
-```
+Optional later: `KEEL_APPROVAL_FILE` for a team manifest that pins scope, template IDs, and proof targets. Default mode is self-attested — `begin_engagement` is the authorization. Rate limits, one-wave-per-host, signed templates, and sanitized evidence still apply.
 
-Expose only the file paths to the Keel process:
+## Safe proofs that still prove impact
 
-```bash
-export KEEL_APPROVAL_FILE=/safe/operator/path/keel-approval.json
-export KEEL_CREDENTIALS_FILE=/safe/operator/path/keel-credentials.json
-keel-pentest doctor
-```
+Scanner output is a hypothesis. Keel proves (or refutes) it with disposable tester accounts and a unique canary. Every playbook is GET-only, budgeted, and returns a curl replay. The replay is the report artifact: *if this is not fixed, a hunter with a normal account can do this*.
 
-On POSIX systems, Keel rejects symlinked or group/world-writable approval files and rejects credential files accessible by group or other users. The manifest is hashed and revalidated before every wave and proof. If it changes, call `begin_engagement` again to resume under the new approval.
+| Playbook | Proves | How, without damage |
+|---|---|---|
+| `cross_account_read` | IDOR / BOLA | Tester A reads its canary; tester B GETs the same A-owned URL. Identical canary + 2xx = `proven`. 401/403/404 or 2xx without the canary = `protected` (refuted). |
+| `reflected_marker` | Reflected XSS / HTML injection | Inject a unique marker plus a harmless `<keel>` probe. Unescaped reflection = `proven`. HTML-encoded reflection = `protected`. Control GET must not already contain the probe. |
+| `open_redirect_canary` | Open redirect | Point the redirect parameter at `https://keel-proof.invalid/<marker>`. A 3xx whose Location host is that canary = `proven`. |
+| `unauth_access_probe` | Missing authZ | Tester A baseline must show the canary; the same URL with no credentials must not. 2xx + canary unauthenticated = `proven`. |
+| `own_session_marker` | Reachability only | A reads its own canary. This is `corroborated`, never vulnerability proof. |
 
-`KEEL_ALLOW_UNAPPROVED_RECON=1` exists only for local development and tests. Do not use it for a real target or bug-bounty program.
+`execute_proof` stores status codes, canary booleans, truncation flags, hashes, hunter impact text, and the repro script. It does not persist response bodies or secrets.
 
-### Scope syntax
-
-| Rule | Meaning |
-|---|---|
-| `target.example` | That exact host only; any HTTP(S) scheme, port, or path |
-| `*.target.example` | Subdomains only; it does not include the apex host |
-| `https://target.example:8443/api` | Exact scheme and effective port, with `/api` as a path prefix |
-
-Exclusions always win. A host rule never matches `target.example.evil.test`, and engagement ids are restricted so they cannot escape the state directory.
-
-Because external Nuclei requests are not yet mediated individually, Keel refuses `template_scan` and `second_look` when authorization is limited to a path or has a path-specific exclusion. Exact reachability and brokered proofs remain available. Use a host-wide rule only when the program actually authorizes the whole host.
-
-## MCP client setup
-
-Use the absolute executable path returned by `command -v keel-pentest` (Windows: `where.exe keel-pentest`):
-
-```bash
-claude mcp add --scope user --transport stdio keel -- /ABS/path/to/keel-pentest
-codex mcp add keel -- /ABS/path/to/keel-pentest
-gemini mcp add --scope user --transport stdio keel /ABS/path/to/keel-pentest
-agy mcp add keel /ABS/path/to/keel-pentest
-hermes mcp add keel --command /ABS/path/to/keel-pentest
-```
-
-Add `KEEL_APPROVAL_FILE`, `KEEL_CREDENTIALS_FILE`, and scanner path overrides to the server's environment rather than to prompts. OpenCode versions, VS Code, Cursor, Hermes, and other hosts use different configuration shapes; see [clients/README.md](https://github.com/lutfizp/keel/blob/main/clients/README.md) for exact examples and verification commands.
-
-## Finding cards and evidence states
-
-Keel does not deduplicate solely by scanner template id. It derives a semantic key from the canonical vulnerability class, normalized host/route, HTTP method, and parameter. Numeric ids, UUIDs, and long hex tokens in routes collapse to stable placeholders, allowing compatible observations from different tools to merge.
-
-| State | Meaning |
-|---|---|
-| `observed` | One tool observed a condition; exploitability is not established |
-| `hypothesis` | The scanner or agent proposed an impact |
-| `corroborated` | Independent sources or a safe reachability check support the condition |
-| `proven` | A strict allowlisted safe-proof invariant succeeded |
-| `refuted` | The safe control test showed the alleged vulnerability was protected |
-
-Agent-written impact text cannot by itself increase confidence to proof. A safe proof state cannot later be downgraded or overwritten by another scanner observation. Informational, hardening, and refuted cards are hidden by default but remain queryable.
-
-## Traffic controls
-
-- exact scope and exclusions are checked when drafting, admitting, ingesting, and proving; opaque template scans are denied when path-level enforcement cannot be guaranteed;
-- one active wave per host, with a configurable maximum of one to four parallel hosts;
-- shared global and per-host token buckets;
-- persistent engagement request reservations and per-wave duration/request ceilings; every retry consumes a new reservation before scanner launch;
-- no scanner retries, redirects, unapproved/unsigned Nuclei template IDs, OAST, headless, network, file, JavaScript, fuzzing, brute-force, intrusive, or DoS template classes;
-- isolated empty scanner configs and stripped proxy/ProjectDiscovery-cloud environment variables prevent inherited settings from silently widening or exporting a wave;
-- HTTP 429 stops the wave/proof and persists an exponential cooldown that honors `Retry-After`;
-- bounded response reads and sanitized evidence without raw request/response bodies.
-
-For brokered proofs, the request count is exact. For external `httpx` and `nuclei` processes, Keel reserves a conservative budget and derives the scanner rate from `budget / duration`, but it does not intercept every internal scanner request. See [Security boundaries](#security-boundaries).
-
-## Bounded proof semantics
-
-| Playbook | Requests | Result that counts |
-|---|---:|---|
-| `cross_account_read` | exactly 2 GETs | Tester A reads its pre-planted canary, then tester B receives 2xx and the identical canary from the exact same A-owned URL |
-| `own_session_marker` | exactly 1 GET | Tester A reads a manually planted canary; this is only `corroborated`, never vulnerability proof |
-
-For `cross_account_read`, a B response of 401, 403, or 404—or a 2xx without the canary—is classified `protected` and refutes the IDOR/BOLA card. A 5xx, redirect, missing A baseline, truncation that hides the marker, or other ambiguity is `inconclusive`, not protected and not proven.
-
-Only access-control vulnerability classes can use `cross_account_read`. Keel stores status codes, canary presence booleans, truncation flags, and hashes of captured bytes; it does not persist bodies or secret header values.
+Plant a non-secret canary in a tester-owned object before `cross_account_read` / `unauth_access_probe`. Reflected XSS and open redirect inject the marker themselves.
 
 ## MCP tools
 
 | Tool | Role |
 |---|---|
-| `begin_engagement` | Register exact scope and bounded traffic policy against operator approval |
-| `draft_waves` | Propose exact reachability and, only for host-wide scope, a template scan; no traffic |
-| `execute_wave` | Revalidate and run one admitted wave |
-| `query_cards` | Return prioritized semantic cards |
-| `second_look` | Re-run only the originating Nuclei template on one card URL |
-| `state_impact` | Record an impact hypothesis and preconditions |
-| `draft_proof` | Return an allowlisted proof plan; no traffic |
-| `execute_proof` | Run a target-bound proof through the request broker |
-| `engagement_health` | Show cooldowns, budgets, and pending waves |
-| `engagement_audit` | Return recent append-only application audit events |
+| `begin_engagement` | Register scope and traffic ceilings |
+| `draft_waves` | Propose reachability + template micro-waves; no traffic |
+| `execute_wave` | Queue one background job |
+| `wave_status` | Stage, progress, result; omit `job_id` to list |
+| `cancel_wave` | Stop a queued or running scanner |
+| `query_cards` | Prioritized semantic cards |
+| `second_look` | Re-run only the originating Nuclei template |
+| `assess_exploitability` | Candidate impact, missing evidence, negative control, playbooks |
+| `state_impact` | Record a hunter hypothesis |
+| `draft_proof` | Allowlisted proof plan; no traffic |
+| `execute_proof` | Run the GET-only playbook |
+| `engagement_health` | Cooldowns, budgets, pending waves |
+| `engagement_audit` | Append-only application events |
 
-### Important `begin_engagement` arguments
+`begin_engagement` needs `engagement_id` and `scope_hosts` (plain hostnames, e.g. `target.example`). Defaults: 3 req/s, one host at a time, 120s / 120 requests per wave. `allow_safe_proof=true` enables proofs. Pass tester credential *names* only; put secrets in `KEEL_CREDENTIALS_FILE`.
 
-| Argument | Default / bound |
-|---|---|
-| `engagement_id` | Stable id, 1–64 safe characters |
-| `scope_hosts`, `exclude_hosts` | Must exactly equal the manifest |
-| `requests_per_second` | `3.0`, maximum `20`, also bounded by manifest |
-| `max_parallel_hosts` | `1`, maximum `4` |
-| `max_wave_seconds` | `120`, range `10–600` |
-| `max_wave_requests` | `120`, maximum `10,000` |
-| `max_engagement_requests` | `1,000`, maximum `100,000` |
-| `max_response_bytes` | `65,536`, range `1 KiB–1 MiB` |
-| `max_proof_requests` | `2`, range `1–10` and playbook-bound |
-| `nuclei_template_ids` | Reviewed subset of the manifest allowlist; empty means no template wave |
-| `allow_safe_proof` | Session-level opt-in; manifest approval is still mandatory |
-| `operator_confirmed` | Legacy compatibility argument; ignored |
-
-`execute_proof` takes `proof_target_ref` and `expected_marker`. The optional legacy `session_a` and `session_b` values are credential-reference names only and, if supplied, must match the manifest binding. Never pass a raw token or cookie.
-
-## Example workflow prompt
-
-First, the human operator prepares the approval/credential files and, for a proof, the tester-A resource and canary. Then a useful recon/triage prompt is:
+## Example prompt
 
 ```text
-Use only Keel MCP tools; do not shell out to httpx, nuclei, curl, or exploit tools.
+Use only Keel MCP tools. Do not shell out to httpx, nuclei, curl, or exploit tools.
 
-1. begin_engagement for bb-2026-01 with exactly the scope, traffic limits, and
-   reviewed nuclei_template_ids in my operator manifest. Set allow_safe_proof false.
+1. begin_engagement for bb-2026-01 with scope_hosts ["target.example"], 3 req/s.
+   Set allow_safe_proof true if I will run proofs.
 2. draft_waves for https://target.example.
-3. Execute one wave at a time. Stop immediately on throttling or policy denial.
-4. query_cards with include_noise false.
-5. Treat scanner output as observed/hypothesis only. Use state_impact only when
-   preconditions and concrete hunter impact can be stated.
-6. For plausible cards, call draft_proof only. Do not execute a proof.
-7. Summarize semantic duplicates, evidence state, preconditions, and remaining
-   uncertainty. Do not claim exploitable unless Keel reports proven.
+3. execute_wave for each wave. Poll wave_status until completed, retryable_failed,
+   terminal_failed, or cancelled.
+4. query_cards (include_noise false), then assess_exploitability on candidates.
+5. For a card with a safe playbook, draft_proof then execute_proof using tester
+   credential names and the canary I planted. Treat protected as refuted.
+6. Summarize duplicates, evidence state, hunter_impact, and the repro_script.
+   Claim exploitable only when Keel reports proven.
 ```
 
-After the operator has enabled `allow_safe_proof` by resuming the same engagement and has supplied an approved target reference:
+## Traffic controls
 
-```text
-Execute only the drafted cross_account_read proof for card <card_id> using
-proof_target_ref <operator-reference> and expected_marker <operator-canary>.
-Omit session_a/session_b so Keel uses the manifest-bound tester credentials.
-Stop after the result. Treat protected as refuted and any other failed invariant
-as inconclusive.
-```
-
-The words “confirm” or `operator_confirmed: true` in a prompt do not authorize traffic. Only the external manifest does.
+- Exact scope and exclusions on draft, admit, ingest, and proof
+- One wave per host; same-host jobs wait
+- Shared global and per-host token buckets
+- Persistent request reservations; retries consume a new reservation
+- Nuclei: signed HTTP templates, no OAST, no redirects, no retries, exclude dos/fuzz/bruteforce/intrusive
+- Isolated empty scanner configs; proxy and ProjectDiscovery-cloud env vars stripped
+- HTTP 429 stops the wave and honors Retry-After
+- Bounded response reads; evidence without raw bodies
 
 ## Troubleshooting
 
-**MCP server failed or import errors**
-
 ```bash
-python3 --version
-keel-pentest --version
 keel-pentest doctor
+keel-pentest setup    # if doctor reports missing httpx/nuclei
 ```
 
-Use Python 3.10+ and a pipx/uv-tool environment or dedicated virtual environment.
+`begin_engagement` after a client restart restores the SQLite engagement. If you changed scope, use a new `engagement_id`.
 
-**`httpx` or `nuclei` not found**
-
-Set `KEEL_HTTPX_BIN` and `KEEL_NUCLEI_BIN` to the absolute ProjectDiscovery executables. Keel deliberately rejects the Python HTTP client's unrelated `httpx` command.
-
-**`begin_engagement` says approval is missing or mismatched**
-
-Verify that `KEEL_APPROVAL_FILE` reaches the Keel subprocess, the engagement id/scope/exclusions exactly match, requested limits do not exceed the manifest, and `expires_at` is still valid. After editing the manifest, call `begin_engagement` again.
-
-**`execute_proof` is denied**
-
-Check `allow_safe_proof`, the manifest's playbook and proof target, the exact card URL, credential refs, canary SHA-256, file permissions, and expiry. A raw header in `session_a` is intentionally rejected because it is not an approved reference.
-
-**Empty cards or retained wave**
-
-Use `engagement_health` and `engagement_audit`. Nonzero scanner exits, 429 responses, and parse/scope failures do not consume the pending wave; request reservations remain fail-closed. Scanner JSONL is atomic: if any non-empty line is malformed, is not a JSON object, or lacks the scanner's minimum identity fields, Keel records `wave_parse_failed`/`wave_schema_failed` and ingests none of that wave's rows.
-
-## Security boundaries
-
-Keel reduces agent freedom; it does not turn active testing into a risk-free activity.
-
-- Use it only with written authorization and within program rules.
-- Keep approval, credentials, and preferably `KEEL_DATA_DIR` outside the AI-writable workspace.
-- The local SQLite audit is append-only through Keel's API, not cryptographically tamper-evident against a local machine owner.
-- External scanners enforce the arguments Keel supplies, but Keel 0.2.0 does not sit on the network path. Its external-scanner request ceiling is therefore conservative/approximate rather than a packet-level guarantee; path-bounded template scans are denied for this reason.
-- A signature is not a safety classification. Keel requires explicit template IDs, but the operator must still review each selected template against program rules and keep limits low.
-- Redirects and OAST are disabled, which deliberately trades some finding coverage for safety.
-- `proven` currently has a narrow meaning: the approved cross-account canary invariant succeeded. Other vulnerability classes still require an operator-reviewed, class-specific safe playbook.
-- Keel cannot guarantee complete coverage, valid authorization, target stability, or bounty acceptance.
-
-See [SECURITY_MODEL.md](https://github.com/lutfizp/keel/blob/main/SECURITY_MODEL.md) for invariants and known limitations.
-
-## Contributing
-
-```bash
-git clone https://github.com/lutfizp/keel.git
-cd keel
-sh scripts/bootstrap.sh python
-source .venv/bin/activate
-pytest
-```
-
-Useful contributions include semantic parsers, deterministic validators, and narrow allowlisted proof playbooks with explicit harm and cleanup invariants. Do not add free-form command execution or an unbounded scanner surface.
+Proofs need `allow_safe_proof=true` and, for session playbooks, `KEEL_CREDENTIALS_FILE` mapping names like `tester-a` to Authorization or Cookie.
 
 ## License
 
-Keel is released under the **MIT License**. See [LICENSE](https://github.com/lutfizp/keel/blob/main/LICENSE).
-
-Copyright (c) 2026 [Lutfi Z.P.](https://github.com/lutfizp)
+MIT. Copyright (c) 2026 [Lutfi Z.P.](https://github.com/lutfizp)
 
 PyPI: **keel-pentest**. MCP Registry: **io.github.lutfizp/keel**. Source: [github.com/lutfizp/keel](https://github.com/lutfizp/keel).

@@ -62,11 +62,14 @@ def _load_credentials(configured: str) -> tuple[Path, dict[str, CredentialEntry]
 def resolve_credential(reference: str, allowed_refs: list[str]) -> dict[str, str]:
     if not reference:
         raise ProofDenied("a tester credential reference is required")
-    if reference not in allowed_refs:
+    if allowed_refs and reference not in allowed_refs:
         raise ProofDenied(f"credential reference {reference!r} is not operator-approved")
     configured = os.environ.get("KEEL_CREDENTIALS_FILE", "").strip()
     if not configured:
-        raise ProofDenied("KEEL_CREDENTIALS_FILE is not configured")
+        raise ProofDenied(
+            "safe proof needs tester credentials; point KEEL_CREDENTIALS_FILE at a "
+            "0600 JSON file mapping names like 'tester-a' to an Authorization or Cookie"
+        )
     try:
         _, document = _load_credentials(configured)
         entry = document[reference]

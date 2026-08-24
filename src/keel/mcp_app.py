@@ -64,6 +64,7 @@ def begin_engagement(
     max_parallel_hosts: int = 1,
     max_wave_seconds: int = 120,
     max_wave_requests: int = 120,
+    max_wave_attempts: int = 2,
     max_engagement_requests: int = 1000,
     max_response_bytes: int = 65536,
     max_proof_requests: int = 2,
@@ -75,7 +76,8 @@ def begin_engagement(
 ) -> dict:
     """Register exact/wildcard scope and bounded traffic policy.
 
-    Safe proof additionally requires an operator-owned approval manifest. The legacy
+    Default mode is self-attested: calling begin_engagement is the authorization.
+    Set KEEL_APPROVAL_FILE for optional strict/team manifests. The legacy
     operator_confirmed argument is ignored and cannot grant approval.
     """
     try:
@@ -87,6 +89,7 @@ def begin_engagement(
             max_parallel_hosts=max_parallel_hosts,
             max_wave_seconds=max_wave_seconds,
             max_wave_requests=max_wave_requests,
+            max_wave_attempts=max_wave_attempts,
             max_engagement_requests=max_engagement_requests,
             max_response_bytes=max_response_bytes,
             max_proof_requests=max_proof_requests,
@@ -104,7 +107,7 @@ def begin_engagement(
 
 @mcp.tool()
 def draft_waves(engagement_id: str, seed_url: str) -> dict:
-    """Draft exact reachability and, for host-wide scope, a safe template wave."""
+    """Draft reachability plus one micro-wave per reviewed template; no traffic."""
     try:
         return _ok(_get_workspace().draft_waves(engagement_id, seed_url))
     except KeelError as exc:
@@ -113,9 +116,27 @@ def draft_waves(engagement_id: str, seed_url: str) -> dict:
 
 @mcp.tool()
 def execute_wave(engagement_id: str, wave_id: str) -> dict:
-    """Run one admitted wave behind the per-host token bucket."""
+    """Start one admitted wave in the background and return its persistent job."""
     try:
-        return _ok(_get_workspace().execute_wave(engagement_id, wave_id))
+        return _ok(_get_workspace().start_wave(engagement_id, wave_id))
+    except KeelError as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def wave_status(engagement_id: str, job_id: str = "") -> dict:
+    """Return one job, or list persistent jobs/waves when job_id is omitted."""
+    try:
+        return _ok(_get_workspace().wave_status(engagement_id, job_id))
+    except KeelError as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def cancel_wave(engagement_id: str, job_id: str) -> dict:
+    """Request cancellation of a queued or running scanner process."""
+    try:
+        return _ok(_get_workspace().cancel_wave(engagement_id, job_id))
     except KeelError as exc:
         return _err(exc)
 
@@ -131,9 +152,18 @@ def query_cards(engagement_id: str, include_noise: bool = False) -> dict:
 
 @mcp.tool()
 def second_look(engagement_id: str, card_id: str) -> dict:
-    """Re-run a bounded template scan on a single card URL."""
+    """Start a background micro-wave using only the originating template."""
     try:
-        return _ok(_get_workspace().second_look(engagement_id, card_id))
+        return _ok(_get_workspace().second_look(engagement_id, card_id, background=True))
+    except KeelError as exc:
+        return _err(exc)
+
+
+@mcp.tool()
+def assess_exploitability(engagement_id: str, card_id: str) -> dict:
+    """Explain candidate impact, missing evidence, controls, and safe proof options."""
+    try:
+        return _ok(_get_workspace().assess_exploitability(engagement_id, card_id))
     except KeelError as exc:
         return _err(exc)
 
@@ -232,6 +262,8 @@ def _doctor() -> int:
             print(f"[missing] {exc}")
         else:
             print(f"[ok] ProjectDiscovery {binary}: {resolved}")
+    if failures:
+        print("[hint] run `keel-pentest setup` to auto-install httpx and nuclei")
     for label, check in (
         ("operator approval", approval_manifest_summary),
         ("credential references", credentials_file_summary),
@@ -249,10 +281,27 @@ def _doctor() -> int:
     return 1 if failures else 0
 
 
+def _setup() -> int:
+    from keel.provision import ProvisionError, provision_scanners
+
+    print("[setup] downloading ProjectDiscovery httpx and nuclei into the managed bin dir")
+    try:
+        installed = provision_scanners()
+    except ProvisionError as exc:
+        print(f"[error] {exc}")
+        return 1
+    for path in installed:
+        print(f"[ok] installed {path}")
+    print("[setup] done; run `keel-pentest doctor` to verify")
+    return 0
+
+
 def main() -> None:
     if sys.argv[1:] == ["--version"]:
         print(f"keel-pentest {_package_version()}")
         return
+    if sys.argv[1:] in (["setup"], ["--setup"]):
+        raise SystemExit(_setup())
     if sys.argv[1:] in (["doctor"], ["--doctor"]):
         raise SystemExit(_doctor())
     mcp.run(transport="stdio")

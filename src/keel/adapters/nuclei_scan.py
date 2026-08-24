@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
-from keel.adapters.base import CommandResult
+from keel.adapters.base import CommandResult, ProgressCallback
 from keel.adapters.process import isolated_scanner_config, run_cli
 
 
@@ -14,6 +15,8 @@ def template_scan(
     max_response_bytes: int = 1_048_576,
     template_id: str = "",
     project_path: Path | None = None,
+    cancel_event: threading.Event | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> CommandResult:
     with isolated_scanner_config() as config_path:
         argv = [
@@ -62,7 +65,12 @@ def template_scan(
         if project_path is not None:
             project_path.mkdir(parents=True, exist_ok=True)
             argv.extend(["-project", "-project-path", str(project_path)])
-        return run_cli(argv, timeout=timeout)
+        kwargs = {"timeout": timeout}
+        if cancel_event is not None:
+            kwargs["cancel_event"] = cancel_event
+        if progress_callback is not None:
+            kwargs["progress_callback"] = progress_callback
+        return run_cli(argv, **kwargs)
 
 
 def _rate_arguments(rate: float) -> list[str]:
