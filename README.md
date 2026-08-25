@@ -14,7 +14,7 @@
 [![PyPI](https://img.shields.io/badge/PyPI-keel--pentest-orange.svg)](https://pypi.org/project/keel-pentest/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-io.github.lutfizp%2Fkeel-informational.svg)](https://github.com/lutfizp/keel)
 [![Version](https://img.shields.io/badge/Version-0.3.0-lightgrey.svg)](https://github.com/lutfizp/keel)
-[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/card.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
+
 
 **Thirteen MCP tools. Semantic dedup. Per-host rate limits. Safe proofs that show what a hunter can do — without damaging the target.**
 
@@ -174,6 +174,10 @@ keel-pentest setup    # if doctor reports missing httpx/nuclei
 `begin_engagement` after a client restart restores the SQLite engagement. If you changed scope, use a new `engagement_id`.
 
 Proofs need `allow_safe_proof=true` and, for session playbooks, `KEEL_CREDENTIALS_FILE` mapping names like `tester-a` to Authorization or Cookie.
+
+[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/card.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
+
+[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/score.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
 
 ## License
 
