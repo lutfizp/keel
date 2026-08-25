@@ -14,6 +14,7 @@
 [![PyPI](https://img.shields.io/badge/PyPI-keel--pentest-orange.svg)](https://pypi.org/project/keel-pentest/)
 [![Registry](https://img.shields.io/badge/MCP%20Registry-io.github.lutfizp%2Fkeel-informational.svg)](https://github.com/lutfizp/keel)
 [![Version](https://img.shields.io/badge/Version-0.3.0-lightgrey.svg)](https://github.com/lutfizp/keel)
+[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/card.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
 
 **Thirteen MCP tools. Semantic dedup. Per-host rate limits. Safe proofs that show what a hunter can do — without damaging the target.**
 
