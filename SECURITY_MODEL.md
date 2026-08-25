@@ -1,6 +1,6 @@
 # Keel security model
 
-Keel 0.2.0 treats the AI/MCP client as untrusted for authorization. The operator-owned approval manifest controls exact scope, exclusions, expiry, traffic and retry ceilings, reviewed Nuclei templates, credential references, playbooks, and proof targets.
+Keel 0.3.0 treats the AI/MCP client as untrusted for authorization. The operator-owned approval manifest controls exact scope, exclusions, expiry, traffic and retry ceilings, reviewed Nuclei templates, credential references, playbooks, and proof targets.
 
 ## Traffic and jobs
 

@@ -249,7 +249,7 @@ Use the equivalent `env` table/object for the selected client (`environment` on 
 
 Audit date: 2026-08-23.
 
-- A clean wheel completed MCP initialize and `tools/list` handshakes with both Python MCP SDK 1.9.0 and 2.0.0; both exposed all ten Keel tools.
+- A clean wheel completed MCP initialize and `tools/list` handshakes with both Python MCP SDK 1.9.0 and 2.0.0; both exposed all thirteen Keel tools.
 - OpenCode 1.18.21 started the repository configuration and reported Keel connected.
 - Claude Code 2.1.181, Codex CLI 0.144.1, Gemini CLI 0.55.1, and Antigravity CLI 1.1.16 command syntax/config discovery were checked locally. Codex loaded the checked-in server entry; Claude still requires normal project trust approval.
 - Cursor, VS Code/GitHub Copilot, Hermes, Windsurf, Cline, and Roo formats were checked against their current official documentation because those executables were not installed in the audit environment.

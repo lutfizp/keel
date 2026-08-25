@@ -175,12 +175,23 @@ keel-pentest setup    # if doctor reports missing httpx/nuclei
 
 Proofs need `allow_safe_proof=true` and, for session playbooks, `KEEL_CREDENTIALS_FILE` mapping names like `tester-a` to Authorization or Cookie.
 
+## 
+<div align="center">
+
 [![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/card.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
 
-[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/score.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
+</div>
 
 ## License
 
 MIT. Copyright (c) 2026 [Lutfi Z.P.](https://github.com/lutfizp)
 
 PyPI: **keel-pentest**. MCP Registry: **io.github.lutfizp/keel**. Source: [github.com/lutfizp/keel](https://github.com/lutfizp/keel).
+
+##
+
+<div align="center">
+
+[![keel MCP server](https://glama.ai/mcp/servers/lutfizp/keel/badges/score.svg)](https://glama.ai/mcp/servers/lutfizp/keel)
+
+</div>
